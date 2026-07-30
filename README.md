@@ -5,7 +5,7 @@ workbooks and dashboards, data models, data apps, embed portals, and custom
 visualization plugins. Install it once and every skill below becomes available in
 any project.
 
-Ten skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
+Eleven skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
 Everything here is authored against the **verified** shape of the Sigma API — the
 reference docs record what was actually observed on a live org, including the
 places where the endpoint accepts something and then silently does nothing with it.
@@ -21,11 +21,13 @@ flowchart TD
     Q1 -->|yes| FD["⭐ sigma-company-dashboard<br/><i>the front door — composes the rest</i>"]
     Q1 -->|no| Q2{Users ENTER<br/>or SAVE values?}
 
-    FD --> Q3{Sample data,<br/>or the client's<br/>own table?}
-    Q3 -->|their own| BYOD["sigma-byod-data-model<br/><i>profile → shape → publish a data model</i>"]
-    Q3 -->|sample| RESHAPE[reshape sample data<br/>with custom SQL]
+    FD --> Q3{"Is there a real table<br/>we can point at?"}
+    Q3 -->|"yes — the client's"| BYOD["sigma-byod-data-model<br/><i>profile → shape → publish a data model</i>"]
+    Q3 -->|"yes — ours (sample)"| RESHAPE[reshape sample data<br/>with custom SQL]
+    Q3 -->|"no — none at all"| SYN["sigma-synthetic-star-model<br/><i>DDL → fabricate → publish a star schema</i>"]
     BYOD --> FD2[dashboard sources the model]
     RESHAPE --> FD2
+    SYN --> FD2
 
     Q2 -->|"enter / adjust / forecast"| ITA[sigma-input-table-app]
     Q2 -->|"segment a population"| CBA[sigma-cohort-builder-app]
@@ -37,6 +39,7 @@ flowchart TD
 
     style FD fill:#fff3cd,stroke:#d39e00,stroke-width:2px
     style BYOD fill:#e7f5ff,stroke:#1971c2
+    style SYN fill:#e7f5ff,stroke:#1971c2
 ```
 
 > ⚠️ **Common mistake:** driving a company build from `branded-dashboard-format` +
@@ -52,6 +55,7 @@ flowchart TD
 |---|---|
 | ⭐ **sigma-company-dashboard** | **START HERE.** End-to-end branded workbook: real fetched logo, brand-gradient header, comparative gradient KPI cards, a live CallText AI insight, charts + filters, a **bespoke domain plugin**, and a second interactive page. Ships the verified API cheatsheet, the six-layout catalog, and the canonical generator. |
 | **sigma-byod-data-model** | **Bring your own data.** Profile a client's warehouse table (types, cardinality, null rates, date range, candidate roles), agree a shaping, publish a real Sigma **data model as code**. Emits **no warehouse SQL** — verified identical on Snowflake and Databricks. |
+| **sigma-synthetic-star-model** | **No data at all.** Fabricate a domain dataset from a pasted DDL or schema file — one SQL statement per table — and publish it as a star schema: a fact plus dimensions wired by real `relationships`. Deterministic (no RNG), shaped (trend, seasonality, category effects), labelled SYNTHETIC in six places, and verified by actually joining it. Works on Snowflake and Databricks from one spec. |
 | **sigma-input-table-app** | Interactive data apps: input tables, buttons, action sequences, modals — scenario modelers, forecasting, planning, write-back, submit→approve. |
 | **sigma-cohort-builder-app** | Agent-driven population segmentation — filter to a named cohort, save it, compare saved cohorts. One agent tool per filter dimension. |
 | **sigma-workbook-conventions** | Spec mechanics: element shapes, layout XML, ID semantics, control catalog, and the POST-time gotchas. |
@@ -91,6 +95,38 @@ which fails outright on Databricks.
 
 ---
 
+## The synthetic path — when there's no data at all
+
+Give it a pasted `CREATE TABLE` or a schema file and it fabricates a **shaped**
+dataset — trend, seasonality, category effects, correlated measures — as one SQL
+statement per table, published as a star schema. Nothing is written to the
+warehouse; rows are computed at query time, so it works on a read-only connection
+with no source table.
+
+```mermaid
+flowchart LR
+    D["CREATE TABLE ...<br/><i>or a schema file</i>"]
+    SP["schema spec<br/><i>reviewable, hand-editable</i>"]
+    SQ["N SQL statements<br/><i>fact + dimensions</i>"]
+    DM["ONE data model<br/><i>N elements + relationships</i>"]
+    V{{"verify-star<br/><i>do the joins actually join?</i>"}}
+    D --> SP --> SQ --> DM --> V
+
+    style V fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px
+```
+
+**Deterministic by rule** — no RNG anywhere, so reruns are row-identical and the
+data can be computed in Python before publishing. **One spec, both dialects:** the
+non-portable surface is exactly two expressions (the row source and the
+day→date conversion); everything else is portable arithmetic.
+
+**Every generated model is labelled SYNTHETIC in six places** — SQL header, marker
+columns, model name, model description, column descriptions, and a workbook
+banner — because this repo has already been burned by fabricated data that looked
+real.
+
+---
+
 ## Publish → verify
 
 **HTTP 200 proves almost nothing.** Both spec endpoints accept structurally valid
@@ -120,6 +156,7 @@ Things the API accepts and then quietly breaks — all verified, all now caught:
 | Two columns sharing a `name` | second silently renamed `Name (1)`; every `[Name]` binds to the first |
 | Input table on a connection without write access | charts render, writes silently do nothing |
 | A plugin element authored purely from the spec | **binding is dangling until re-picked in the UI** |
+| A dimension with duplicate primary keys | fact **fans out** — every measure silently multiplied |
 
 ---
 
@@ -215,7 +252,7 @@ customdemo/
 ├── .claude-plugin/
 │   ├── plugin.json          # manifest (skills auto-discovered from skills/)
 │   └── marketplace.json     # makes the repo self-installable via /plugin
-├── skills/                  # 10 skills, one folder each with SKILL.md
+├── skills/                  # 11 skills, one folder each with SKILL.md
 ├── plugins/                 # 10 plugin examples; _scaffold/ is the clone target
 ├── scripts/
 │   ├── api/                 # 12 auth-bootstrapped REST + MCP wrappers

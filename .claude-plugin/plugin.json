@@ -1,6 +1,6 @@
 {
   "name": "customdemo",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Sigma Computing skill collection for Claude Code — end-to-end branded workbook builder (data model + themed workbook + CallText AI summary + bespoke plugin), bring-your-own-data profiling and data-models-as-code for a client's own Snowflake/Databricks table, a six-layout catalog, workbook conventions and styling, embed portals, and plugin development. Skills auto-discovered from ./skills; plugin sources in ./plugins.",
   "author": {
     "name": "Jeffrey Kortis",
