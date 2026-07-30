@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>HRRP Readmission Penalty Radar — Cleveland Clinic Sigma Plugin</title>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,Arial,sans-serif;
+       background:transparent;color:#2B2B2B;overflow:hidden}
+  #wrap{height:100%;width:100%;display:flex;flex-direction:column;padding:10px 14px;gap:6px}
+  #top{display:flex;justify-content:space-between;align-items:baseline;flex:0 0 auto;gap:12px}
+  #ttl{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#007BC2}
+  #meta{font-size:11px;color:#6B7280;white-space:nowrap}
+  #meta b{color:#2B2B2B}
+  #body{flex:1;display:flex;gap:14px;min-height:0}
+  #plot{flex:1;min-width:0;min-height:0}
+  #rail{width:190px;flex:0 0 190px;display:flex;flex-direction:column;gap:4px;min-height:0;overflow:hidden}
+  #railttl{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#6B7280;margin-bottom:2px}
+  .rrow{display:flex;align-items:center;gap:6px;font-size:11px}
+  .rname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#2B2B2B}
+  .rbarw{width:58px;height:6px;background:#EEF2F6;border-radius:3px;overflow:hidden;flex:0 0 58px}
+  .rbar{height:100%;border-radius:3px}
+  .rval{width:40px;text-align:right;font-variant-numeric:tabular-nums;color:#2B2B2B;font-weight:600;flex:0 0 40px}
+  #tip{position:fixed;pointer-events:none;background:#0B2A3F;border:1px solid #16506F;border-radius:8px;
+       padding:8px 10px;font-size:11px;color:#EAF4FA;opacity:0;transition:opacity .1s;z-index:10;
+       white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  #tip b{color:#7FC4E8}
+  #tip .pen{color:#FF8A8A}
+  #tip .ok{color:#7BD3A0}
+  text{font-family:inherit}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top">
+    <div id="ttl">HRRP readmission penalty radar</div>
+    <div id="meta">benchmark <b id="mbench">—</b> · exposed <b id="mexp">—</b></div>
+  </div>
+  <div id="body">
+    <div id="plot"></div>
+    <div id="rail"><div id="railttl">Penalty exposure</div><div id="rlist"></div></div>
+  </div>
+</div>
+<div id="tip"></div>
+<script>
+(function(){
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||
+             (window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
+
+  var BLUE='#007BC2', GREEN='#1D8553', RED='#C8102E', INK='#2B2B2B', MUTE='#6B7280';
+
+  var defs=[
+    {name:'source',type:'element'},
+    {name:'cohort',type:'column',source:'source',allowMultiple:false,label:'HRRP cohort'},
+    {name:'volume',type:'column',source:'source',allowMultiple:false,
+     allowedTypes:['number','integer'],label:'Encounter volume'},
+    {name:'rate',type:'column',source:'source',allowMultiple:false,
+     allowedTypes:['number','integer'],label:'30-day readmission rate'},
+    {name:'exposure',type:'column',source:'source',allowMultiple:false,
+     allowedTypes:['number','integer'],label:'Penalty rate (exposure)'},
+    {name:'benchmarkMode',type:'dropdown',values:['Portfolio average','Fixed threshold'],
+     defaultValue:'Portfolio average',label:'Benchmark'},
+    {name:'benchmarkPct',type:'text',defaultValue:'10',label:'Fixed threshold (%)'}
+  ];
+  if(client) client.config.configureEditorPanel(defs);
+
+  var tip=document.getElementById('tip');
+  function pct(v){ return (v*100).toFixed(1)+'%'; }
+  function num(v){ v=Math.round(v);
+    if(v>=1e6) return (v/1e6).toFixed(1)+'M';
+    if(v>=1e3) return (v/1e3).toFixed(1)+'k';
+    return String(v); }
+
+  function el(tag,attrs){ var e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+    for(var k in attrs) e.setAttribute(k,attrs[k]); return e; }
+
+  function draw(rows){
+    var host=document.getElementById('plot');
+    host.innerHTML='';
+    // Sigma sizes the panel AFTER the first paint, so measure at DRAW time
+    // (a ResizeObserver re-invokes this) rather than caching a load-time size.
+    var W=host.clientWidth||520, H=host.clientHeight||300;
+    if(W<40||H<40) return;
+
+    var M={t:14,r:18,b:34,l:46};
+    var pw=Math.max(10,W-M.l-M.r), ph=Math.max(10,H-M.t-M.b);
+
+    var totalVol=0, totalExposed=0;
+    rows.forEach(function(d){ totalVol+=d.vol; totalExposed+=d.vol*d.exp; });
+    var bench = st.benchMode==='Fixed threshold'
+      ? (parseFloat(st.benchPct)||0)/100
+      : (totalVol? rows.reduce(function(a,d){return a+d.vol*d.rate;},0)/totalVol : 0);
+
+    var maxVol=Math.max.apply(null,rows.map(function(d){return d.vol;}).concat([1]));
+    var rates=rows.map(function(d){return d.rate;}).concat([bench]);
+    var minR=Math.min.apply(null,rates), maxR=Math.max.apply(null,rates);
+    var pad=Math.max((maxR-minR)*0.35, 0.012);
+    var lo=Math.max(0,minR-pad), hi=maxR+pad;
+
+    var x=function(v){ return M.l + (v/(maxVol*1.12))*pw; };
+    var y=function(v){ return M.t + ph - ((v-lo)/((hi-lo)||1))*ph; };
+    var maxExp=Math.max.apply(null,rows.map(function(d){return d.vol*d.exp;}).concat([1]));
+    var rad=function(d){ return 8+Math.sqrt((d.vol*d.exp)/maxExp)*Math.min(30, Math.max(14, ph*0.13)); };
+
+    var svg=el('svg',{width:W,height:H});
+
+    // y gridlines
+    for(var i=0;i<=4;i++){
+      var v=lo+(hi-lo)*i/4, yy=y(v);
+      svg.appendChild(el('line',{x1:M.l,x2:M.l+pw,y1:yy,y2:yy,stroke:'#E8EDF2','stroke-width':1}));
+      var t=el('text',{x:M.l-8,y:yy+3.5,'text-anchor':'end','font-size':9.5,fill:MUTE});
+      t.textContent=pct(v); svg.appendChild(t);
+    }
+    // axes
+    svg.appendChild(el('line',{x1:M.l,x2:M.l+pw,y1:M.t+ph,y2:M.t+ph,stroke:'#CBD5E0','stroke-width':1}));
+    for(var i=0;i<=4;i++){
+      var xv=maxVol*1.12*i/4, xx=x(xv);
+      var t2=el('text',{x:xx,y:M.t+ph+15,'text-anchor':'middle','font-size':9.5,fill:MUTE});
+      t2.textContent=num(xv); svg.appendChild(t2);
+    }
+    var ax=el('text',{x:M.l+pw/2,y:H-4,'text-anchor':'middle','font-size':9.5,fill:MUTE});
+    ax.textContent='Encounter volume'; svg.appendChild(ax);
+
+    // benchmark line — everything above it is penalty-exposed
+    var by=y(bench);
+    svg.appendChild(el('rect',{x:M.l,y:M.t,width:pw,height:Math.max(0,by-M.t),
+      fill:RED,opacity:0.045}));
+    svg.appendChild(el('line',{x1:M.l,x2:M.l+pw,y1:by,y2:by,stroke:RED,
+      'stroke-width':1.5,'stroke-dasharray':'5 4'}));
+    var bl=el('text',{x:M.l+pw-2,y:by-5,'text-anchor':'end','font-size':9.5,
+      fill:RED,'font-weight':700});
+    bl.textContent='benchmark '+pct(bench); svg.appendChild(bl);
+
+    // bubbles
+    rows.forEach(function(d){
+      var over=d.rate>bench, cx=x(d.vol), cy=y(d.rate), r=rad(d);
+      svg.appendChild(el('circle',{cx:cx,cy:cy,r:r,fill:over?RED:GREEN,
+        'fill-opacity':over?0.20:0.16,stroke:over?RED:GREEN,'stroke-width':1.8}));
+      var lbl=el('text',{x:cx,y:cy+3.5,'text-anchor':'middle','font-size':10,
+        'font-weight':700,fill:over?RED:GREEN});
+      lbl.textContent=d.name.length>16?d.name.slice(0,15)+'…':d.name;
+      svg.appendChild(lbl);
+      var hit=el('circle',{cx:cx,cy:cy,r:Math.max(r,16),fill:'transparent',style:'cursor:default'});
+      hit.addEventListener('mousemove',function(e){
+        tip.style.opacity=1;
+        tip.style.left=Math.min(e.clientX+14, window.innerWidth-230)+'px';
+        tip.style.top=(e.clientY+14)+'px';
+        // In an HRRP cohort every 30-day readmission is penalty-flagged by
+        // definition, so d.exp == d.rate here. Report the COUNT rather than
+        // restating the same percentage twice.
+        tip.innerHTML='<b>'+d.name+'</b><br>'+
+          'Encounters '+num(d.vol)+'<br>'+
+          'Readmit 30d '+pct(d.rate)+
+          ' <span class="'+(over?'pen':'ok')+'">('+(over?'+':'')+
+            ((d.rate-bench)*100).toFixed(1)+' pts vs benchmark)</span><br>'+
+          '<b>'+num(Math.round(d.vol*d.exp))+'</b> penalty-flagged readmissions';
+      });
+      hit.addEventListener('mouseleave',function(){ tip.style.opacity=0; });
+      svg.appendChild(hit);
+    });
+    host.appendChild(svg);
+
+    document.getElementById('mbench').textContent=pct(bench);
+    document.getElementById('mexp').textContent=num(totalExposed)+' enc';
+
+    // exposure rail
+    var list=document.getElementById('rlist'); list.innerHTML='';
+    rows.slice().sort(function(a,b){return b.vol*b.exp-a.vol*a.exp;}).forEach(function(d){
+      var over=d.rate>bench;
+      var row=document.createElement('div'); row.className='rrow';
+      var n=document.createElement('div'); n.className='rname'; n.textContent=d.name;
+      var bw=document.createElement('div'); bw.className='rbarw';
+      var b=document.createElement('div'); b.className='rbar';
+      b.style.width=Math.max(3,(d.vol*d.exp/maxExp)*100)+'%';
+      b.style.background=over?RED:GREEN; bw.appendChild(b);
+      var v=document.createElement('div'); v.className='rval'; v.textContent=num(d.vol*d.exp);
+      row.appendChild(n); row.appendChild(bw); row.appendChild(v);
+      list.appendChild(row);
+    });
+  }
+
+  // Real measured cohort figures, so a standalone preview is representative.
+  function synth(){
+    return [
+      {name:'Heart Failure',     vol:11407, rate:0.10248, exp:0.0602},
+      {name:'Pneumonia',         vol:5974,  rate:0.11232, exp:0.0644},
+      {name:'COPD',              vol:4137,  rate:0.09403, exp:0.0548},
+      {name:'Joint Replacement', vol:4124,  rate:0.08923, exp:0.0511},
+      {name:'AMI',               vol:2041,  rate:0.09456, exp:0.0533}
+    ];
+  }
+
+  var st={cfg:{},data:null,unsub:null,rows:null,
+          benchMode:'Portfolio average',benchPct:'10'};
+
+  function recompute(){
+    var c=st.cfg||{}, d=st.data;
+    st.benchMode=c.benchmarkMode||'Portfolio average';
+    st.benchPct=c.benchmarkPct||'10';
+    if(d&&c.cohort&&c.volume&&c.rate&&d[c.cohort]&&d[c.volume]){
+      var nm=d[c.cohort]||[], vo=d[c.volume]||[], ra=d[c.rate]||[],
+          ex=(c.exposure&&d[c.exposure])||[];
+      // Aggregate rows landing on the same cohort: volume sums, and the rates
+      // are recombined as VOLUME-WEIGHTED averages. Averaging a rate across
+      // unequal-sized groups without weighting is the classic wrong number.
+      var acc={}, order=[];
+      for(var i=0;i<nm.length;i++){
+        var k=String(nm[i]); if(k===''||k==='null'||k==='undefined') continue;
+        var v=Number(vo[i]); if(!isFinite(v)) continue;
+        if(!acc[k]){ acc[k]={name:k,vol:0,rw:0,ew:0}; order.push(k); }
+        acc[k].vol+=v;
+        var r=Number(ra[i]); if(isFinite(r)) acc[k].rw+=r*v;
+        var e2=Number(ex[i]); if(isFinite(e2)) acc[k].ew+=e2*v;
+      }
+      var rows=order.map(function(k){ var a=acc[k];
+        return {name:a.name, vol:a.vol,
+                rate:a.vol? a.rw/a.vol : 0,
+                exp: a.vol? a.ew/a.vol : 0}; })
+        .filter(function(r){ return r.vol>0; });
+      if(rows.length){ st.rows=rows; draw(rows); return; }
+    }
+    st.rows=synth(); draw(st.rows);
+  }
+
+  function applyCfg(cfg){
+    st.cfg=cfg||{};
+    if(st.unsub){ try{ st.unsub(); }catch(e){} st.unsub=null; }
+    if(cfg&&cfg.source){
+      st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(dd){
+        st.data=dd; recompute(); });
+    }
+    recompute();
+  }
+
+  if(client){
+    client.config.subscribe(applyCfg);
+    // Also read the CURRENT config synchronously at startup. subscribe() alone
+    // left these plugins with dataEvents=0 on a preconfigured workbook.
+    try { var _i=client.config.get(); if(_i) applyCfg(_i); } catch(e){}
+  } else { recompute(); }
+
+  // Sigma sizes the iframe AFTER the script's first paint, so a load-time-only
+  // measurement draws at a stale size (half-width chart, clipped bubbles).
+  var ro=new ResizeObserver(function(){ if(st.rows) draw(st.rows); });
+  ro.observe(document.getElementById('plot'));
+  window.addEventListener('resize',function(){ if(st.rows) draw(st.rows); });
+})();
+</script>
+</body>
+</html>

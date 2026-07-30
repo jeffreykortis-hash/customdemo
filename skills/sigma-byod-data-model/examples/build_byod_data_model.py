@@ -30,14 +30,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 
 
 def friendly(raw: str) -> str:
     """Warehouse column name -> the display name Sigma derives from it.
     PRODUCT_TYPE -> 'Product Type'. Must match profile-table.py.
+
+    Sigma splits at LETTER<->DIGIT boundaries too:
+    primary_diagnosis_icd10 -> 'Primary Diagnosis Icd 10'.
     """
-    return " ".join(w.capitalize() if w.isalpha() else w for w in raw.split("_"))
+    return " ".join(p.capitalize()
+                    for word in raw.split("_")
+                    for p in re.findall(r"[A-Za-z]+|\d+", word))
 
 
 def slug(raw: str) -> str:

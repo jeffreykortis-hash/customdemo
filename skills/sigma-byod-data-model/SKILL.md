@@ -38,6 +38,37 @@ client table ──(warehouse-table)──> DATA MODEL ──(data-model source)
              dialect-free           Sigma-formula shaping              any generator
 ```
 
+## Move zero — ASK for the dataset. Do not go find one.
+
+The trigger for this skill is someone saying "use our data" / "I have a dataset."
+That is an invitation to ASK, not a cue to search. Do **not** sweep the workspace
+for a plausible-looking table and propose the best match — it burns a turn on a
+table they never mentioned. (Verified failure mode: a session ran `search` for
+healthcare tables, found and profiled a sample Synthea schema, and the user cut in
+with *"no, prompt me for my dataset."*)
+
+Ask for, at minimum, the **connection** (a name is fine) and the fully-qualified
+**`<CATALOG/DB>.<SCHEMA>.<TABLE>`**. Then confirm what you resolved before profiling.
+
+**Resolving a half-specified path.** People rarely paste all three cleanly:
+
+- **A Databricks HTTP path** — `/sql/1.0/warehouses/<id>/<catalog>/<schema>` —
+  gives catalog and schema but no table, and the warehouse id is **not** exposed
+  by `GET /v2/connections` (there is no `httpPath` field), so you cannot match the
+  connection directly. Probe instead: run
+  `scripts/api/lookup-path.sh <conn> <catalog> <schema>` across every connection of
+  that dialect and keep the one that returns an `inodeId`.
+- **No table named** → enumerate with `scripts/api/probe-schema-tables.sh <conn>
+  <catalog> <schema> [names...]`. There is no "list children of a schema" endpoint,
+  so this probes a name list; pass domain-appropriate guesses.
+- **Typos** — a hand-typed path is often slightly wrong (`healtcare_analytics` for
+  `healthcare_analytics`). Probe the obvious variants before saying "not found."
+
+⚠ The MCP tools are **not** a substitute here: MCP uses a different connection-id
+space than REST, and a table can be absent from the MCP index while resolving
+perfectly over REST (`describe` returns "No matching record" for it). Resolve
+BYOD paths over REST.
+
 ## The four moves
 
 1. **Pick connections** — `scripts/api/list-connections.sh`, then ASK the human.
@@ -106,6 +137,24 @@ same care.
 `max(date)` is long past, a `Today()`-anchored "Current Period" is simply EMPTY
 and every comparative KPI reads zero. The profiler raises `stale-max-date`; the
 generator defaults to anchoring on the table's max date instead.
+
+**⚠ GOTCHA — `no-date-column` often means the dates are stored as TEXT.** Plenty
+of real tables carry `admission_date` / `order_date` as `text` in `YYYY-MM-DD`.
+The profiler reports **zero** date candidates and warns `no-date-column`, which
+reads like "this table has no time dimension" — so trend charts, `Month`, and the
+whole period comparison get dropped. Before believing it, look for text columns
+whose name says date and whose profiled cardinality looks like a span of days
+(e.g. 743 distinct values ≈ two years). Fix it in the MODEL, not the warehouse:
+
+```
+{"id":"c-adm-dt","name":"Admission Dt","formula":"Date([Admission Date])"}
+{"id":"c-month","name":"Month","formula":"DateTrunc(\"month\", [Admission Dt])"}
+```
+
+Everything downstream — `Month`, `Period Name`, the timeline metric — then hangs
+off the cast column, and the anchor date for `Period Name` is the max of the
+*cast* column. This is exactly the shaping the BYOD path exists to do; do not
+push it back to the client as "your dates are the wrong type."
 
 ## The shaping proposal — what belongs in the model
 

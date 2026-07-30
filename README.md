@@ -308,7 +308,7 @@ customdemo/
 │   ├── plugin.json          # manifest (skills auto-discovered from skills/)
 │   └── marketplace.json     # makes the repo self-installable via /plugin
 ├── skills/                  # 12 skills, one folder each with SKILL.md
-├── plugins/                 # 10 plugin examples; _scaffold/ is the clone target
+├── plugins/                 # 11 plugin examples; _scaffold/ is the clone target
 ├── artifacts/               # client screenshots + transcripts (gitignored)
 ├── scripts/
 │   ├── api/                 # 12 auth-bootstrapped REST + MCP wrappers
