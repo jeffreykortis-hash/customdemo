@@ -1,66 +1,197 @@
-# millersigma
+# customdemo
 
-A Claude Code **plugin** bundling Connor Miller's Sigma Computing skills — one
-home for everything that helps Claude build Sigma workbooks, dashboards, embed
-portals, and plugins. Install it once and every skill below becomes available
-in any project.
+A Claude Code **plugin** for building Sigma Computing assets from code — branded
+workbooks and dashboards, data models, data apps, embed portals, and custom
+visualization plugins. Install it once and every skill below becomes available in
+any project.
 
-## Which skill do I use? (START HERE)
+Ten skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
+Everything here is authored against the **verified** shape of the Sigma API — the
+reference docs record what was actually observed on a live org, including the
+places where the endpoint accepts something and then silently does nothing with it.
 
-**Building a branded Sigma dashboard / POV / demo for a company? → use `sigma-company-dashboard`. That one. Nothing else.**
+---
 
-It's the flagship, end-to-end builder and it *composes* the others for you (layout, styling, conventions, write-back). Everything else is a building block or a different deliverable:
+## Which skill do I use?
 
-- ⭐ **`sigma-company-dashboard`** — full branded company workbook: real fetched logo, comparative KPI cards, live AI insight, a **bespoke plugin**, and a scenario-modeler page. **This is the front door.**
-- **`sigma-byod-data-model`** — the client is bringing **their own data**. Profiles their Snowflake/Databricks table and publishes a real data model the workbook sources from. The flagship calls this first when the answer to "sample data or your own table?" is the latter.
-- `sigma-input-table-app` — a standalone data app / scenario modeler / forecasting / write-back tool (only when *that* is the whole ask).
-- `sigma-cohort-builder-app` — an agent-driven population segmentation app (save and compare cohorts).
-- `branded-dashboard-format`, `sigma-workbook-styling`, `sigma-workbook-conventions` — building blocks the flagship uses; call directly only for a specific sub-task.
-- `sigma-plugin-development`, `sigma-plugin-patterns` — for building a plugin itself.
-- `sigma-embed-portal` — a Netlify embed site.
+```mermaid
+flowchart TD
+    Start([What are you building?]) --> Q1{Branded dashboard,<br/>POV or demo<br/>for a company?}
 
-> ⚠️ **Common mistake:** driving a company build from `branded-dashboard-format` + the building blocks (naming them in your prompt). That produces a *generic* dashboard — no fetched logo, no bespoke plugin. Just say: **"Use `sigma-company-dashboard` to build a Sigma workbook for [Company]."**
+    Q1 -->|yes| FD["⭐ sigma-company-dashboard<br/><i>the front door — composes the rest</i>"]
+    Q1 -->|no| Q2{Users ENTER<br/>or SAVE values?}
+
+    FD --> Q3{Sample data,<br/>or the client's<br/>own table?}
+    Q3 -->|their own| BYOD["sigma-byod-data-model<br/><i>profile → shape → publish a data model</i>"]
+    Q3 -->|sample| RESHAPE[reshape sample data<br/>with custom SQL]
+    BYOD --> FD2[dashboard sources the model]
+    RESHAPE --> FD2
+
+    Q2 -->|"enter / adjust / forecast"| ITA[sigma-input-table-app]
+    Q2 -->|"segment a population"| CBA[sigma-cohort-builder-app]
+    Q2 -->|no| Q4{What's the<br/>deliverable?}
+
+    Q4 -->|a custom viz| PLG["sigma-plugin-development<br/>+ sigma-plugin-patterns"]
+    Q4 -->|an embedded site| EMB[sigma-embed-portal]
+    Q4 -->|"raw spec authoring"| CONV[sigma-workbook-conventions]
+
+    style FD fill:#fff3cd,stroke:#d39e00,stroke-width:2px
+    style BYOD fill:#e7f5ff,stroke:#1971c2
+```
+
+> ⚠️ **Common mistake:** driving a company build from `branded-dashboard-format` +
+> the building blocks by naming them in your prompt. That yields a *generic*
+> dashboard — no fetched logo, no bespoke plugin. Just say:
+> **"Use `sigma-company-dashboard` to build a Sigma workbook for \[Company]."**
+
+---
 
 ## Skills
 
-| Skill | What it does | Dependencies |
-|---|---|---|
-| ⭐ **sigma-company-dashboard** | **START HERE.** End-to-end: given a company, reshape sample data via custom SQL → brand-gradient header + **real fetched logo** → **comparative** gradient KPI cards → live CallText AI insight, charts, filters → a **bespoke domain plugin** (localhost-hosted + registered) → a scenario-modeler page with agents. Worked examples: JPMC, DoorDash, Fiserv, Zachry. Ships the verified current-API cheatsheet + canonical generator (`build_company_command_center.py`). | Uses `scripts/`, staging API, local plugin host. |
-| **sigma-byod-data-model** | **Bring your own data.** Profile a client's own warehouse table (types, cardinality, null rates, date range, candidate roles), agree a shaping, then publish a real Sigma **data model as code** (`POST /v2/dataModels/spec`) that workbooks source from. Emits **no warehouse SQL** — `warehouse-table` sourcing plus Sigma-formula shaping, verified identical on Snowflake and Databricks. Owns the read-vs-writeback connection split. | Uses `scripts/profile-table.py`, `scripts/validate-datamodel-spec.py`, `scripts/api/publish-datamodel.sh`. |
-| **sigma-cohort-builder-app** | Agent-driven population segmentation — filter a population to a named cohort, save it, compare saved cohorts. One agent tool per filter dimension. | Staging API; needs a writeback-enabled connection. |
-| **sigma-input-table-app** | Interactive counterpart to the dashboard skill — build a Sigma **data app** from code: input tables + buttons + action sequences + modals (scenario modelers, forecasting/planning, write-back, submit→approve). Encodes the verified beta workbook-spec shapes (input tables, cross-joins, linked input tables, modal pages, button effects) + the hard limits/workarounds + a full working generator. | Staging API (beta `create-workbook-spec`). |
-| **sigma-workbook-conventions** | Authoring/editing/reviewing Sigma workbook & data-model JSON specs — input resolution, naming, layout, control catalog, ID semantics, and the POST-time gotchas. The flagship skill. | Uses `scripts/` (see [Working with the scripts](#working-with-the-scripts)); pairs with the upstream `sigma-api` / `sigma-data-models` skills. |
-| **sigma-workbook-styling** | The visual-craft layer — containers as design blocks, images/logos, buttons & actions, and color/spacing/typography to make a workbook look *designed*, not just correct. Honest about what round-trips via spec vs what needs UI finishing. | Pairs with `sigma-workbook-conventions` (mechanics) and `branded-dashboard-format` (brand). |
-| **branded-dashboard-format** | The house dashboard format (header/filter-bar → KPI row → trend → detail pivot) + a fill-in brand-kit template. | Prereq: `sigma-workbook-conventions`. |
-| **sigma-embed-portal** | Scrape a prospect's site, build a branded Sigma embed portal, deploy via Netlify. Self-contained. | — |
-| **sigma-plugin-development** | Full reference for building Sigma plugins with the `@sigmacomputing/plugin` SDK — editor panel, element data, variables, actions, hosting. | — |
-| **sigma-plugin-patterns** | Architectural recipes for plugins (JSON settings pattern, etc.). | Pairs with `sigma-plugin-development`. |
+| Skill | What it does |
+|---|---|
+| ⭐ **sigma-company-dashboard** | **START HERE.** End-to-end branded workbook: real fetched logo, brand-gradient header, comparative gradient KPI cards, a live CallText AI insight, charts + filters, a **bespoke domain plugin**, and a second interactive page. Ships the verified API cheatsheet, the six-layout catalog, and the canonical generator. |
+| **sigma-byod-data-model** | **Bring your own data.** Profile a client's warehouse table (types, cardinality, null rates, date range, candidate roles), agree a shaping, publish a real Sigma **data model as code**. Emits **no warehouse SQL** — verified identical on Snowflake and Databricks. |
+| **sigma-input-table-app** | Interactive data apps: input tables, buttons, action sequences, modals — scenario modelers, forecasting, planning, write-back, submit→approve. |
+| **sigma-cohort-builder-app** | Agent-driven population segmentation — filter to a named cohort, save it, compare saved cohorts. One agent tool per filter dimension. |
+| **sigma-workbook-conventions** | Spec mechanics: element shapes, layout XML, ID semantics, control catalog, and the POST-time gotchas. |
+| **sigma-workbook-styling** | The visual-craft layer, and **authoritative for theme** — the full `themeOverrides` reference and its rendering traps. |
+| **branded-dashboard-format** | The `analyst-detail` house layout + a fill-in brand-kit template. |
+| **sigma-embed-portal** | Scrape a prospect's site, build a branded embed portal, deploy via Netlify. |
+| **sigma-plugin-development** | Building a Sigma plugin with the `@sigmacomputing/plugin` SDK — editor panel, element data, variables, actions, hosting. |
+| **sigma-plugin-patterns** | Architectural recipes for plugins (the JSON settings pattern, edit mode, action effects). |
 
-## Install as a plugin
+---
 
-This repo is both a plugin and a single-plugin marketplace, so you can install
-it directly from GitHub:
+## The bring-your-own-data spine
+
+The BYOD path emits **no warehouse SQL**. The source is a `warehouse-table` and all
+shaping is Sigma formulas, which Sigma compiles to whatever dialect the connection
+speaks — so the identical spec works on Snowflake and Databricks.
+
+```mermaid
+flowchart LR
+    T[("Client table<br/>Snowflake · Databricks")]
+    P["scripts/profile-table.py<br/><i>types · cardinality · null rates<br/>candidate roles</i>"]
+    H{{"human confirms<br/>the shaping"}}
+    DM["Sigma Data Model<br/><i>computed columns + metrics<br/>in Sigma formulas</i>"]
+    WB["Workbook<br/><i>source: data-model</i>"]
+
+    T -->|warehouse-table<br/>dialect-free| P
+    P --> H
+    H --> DM
+    DM -->|dataModelId + elementId| WB
+
+    style DM fill:#e7f5ff,stroke:#1971c2,stroke-width:2px
+```
+
+Two things this replaces: the old path hardcoded one Snowflake sample table and
+reshaped it with Snowflake-only SQL (`GET`/`ARRAY_CONSTRUCT`, `HASH`, `DATEADD`),
+which fails outright on Databricks.
+
+---
+
+## Publish → verify
+
+**HTTP 200 proves almost nothing.** Both spec endpoints accept structurally valid
+input that does not work at render time, so every path has explicit gates:
+
+```mermaid
+flowchart TD
+    G[generator emits spec.json] --> V1{"validate-spec.py<br/>validate-datamodel-spec.py"}
+    V1 -->|issues| G
+    V1 -->|clean| POST[POST /v2/*/spec]
+    POST -->|"HTTP 200 ≠ working"| AV{"auto-verify<br/><i>describe → any column<br/>of type `error`?</i>"}
+    AV -->|broken| G
+    AV -->|clean| Q["query the element<br/><i>real rows? sane numbers?</i>"]
+    Q --> EYE{{"👁 OPEN IT IN A BROWSER"}}
+    EYE -->|"wrong / blank / fake"| G
+    EYE -->|correct| DONE([done])
+
+    style EYE fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px
+    style AV fill:#fff3cd,stroke:#d39e00
+```
+
+Things the API accepts and then quietly breaks — all verified, all now caught:
+
+| Accepted with `success: true` | What actually happens |
+|---|---|
+| Data-model formula referencing a nonexistent column | column renders with type `error` |
+| Two columns sharing a `name` | second silently renamed `Name (1)`; every `[Name]` binds to the first |
+| Input table on a connection without write access | charts render, writes silently do nothing |
+| A plugin element authored purely from the spec | **binding is dangling until re-picked in the UI** |
+
+---
+
+## Custom plugins
+
+Every plugin is a **single `index.html`** — CDN SDK, no build step. The dev loop is
+`python3 -m http.server` plus `scripts/register_plugin.py`.
+
+```mermaid
+flowchart LR
+    subgraph page["plugin page (iframe)"]
+        R["react@18.3.1 UMD"] --> S["@sigmacomputing/plugin@1.2.0<br/><i>window.SigmaPlugin.client</i>"]
+        S --> C["config.get() + subscribe()"]
+        C --> E["elements.subscribeToElementData(id, cb)"]
+        E --> D[draw]
+    end
+    WBK[(Workbook element)] -.->|column data| E
+    SET["settings JSON<br/><i>one config field</i>"] -.-> D
+```
+
+**Both script URLs must be pinned and React must load first.** The SDK's UMD build
+has a hard React peer dependency — without it the factory throws, `window.SigmaPlugin`
+is left an empty object, and the plugin silently renders its synthetic fallback
+instead of your data. An unversioned CDN URL previously rolled every plugin here
+onto a build that renamed the global, breaking all of them at once.
+
+Clone **`plugins/_scaffold/`** to start a new one. It wires up the JSON settings
+pattern, an edit-mode drawer, luminance-derived theming, direction-aware deltas
+(so cost and churn don't render backwards), loading states, and a mandatory
+`ResizeObserver`. It ships a regression suite that loads the **real** React + SDK
+bundles:
+
+```bash
+npm i jsdom@29.1.1
+curl -sL https://unpkg.com/react@18.3.1/umd/react.production.min.js > plugins/_scaffold/.react.js
+curl -sL https://unpkg.com/@sigmacomputing/plugin@1.2.0            > plugins/_scaffold/.sdk.js
+node plugins/_scaffold/test.js          # 24 assertions
+```
+
+> ⚠️ **A plugin's default failure mode is a confident wrong answer.** Every plugin
+> here falls back to synthetic sample data when it receives none, so a dead binding
+> renders a plausible, entirely fictional chart. After POSTing a workbook with a
+> plugin element, **re-pick the source element in the editor panel and confirm real
+> numbers on screen.**
+
+---
+
+## Install
+
+This repo is both a plugin and a single-plugin marketplace:
 
 ```
-/plugin marketplace add cmiller-coder/millersigma
-/plugin install millersigma@millersigma
+/plugin marketplace add jeffreykortis-hash/customdemo
+/plugin install customdemo@customdemo
 ```
 
-Skills are auto-discovered from `skills/`. Once installed, they trigger by
-description or can be invoked by name.
+Skills are auto-discovered from `skills/` and trigger by description, or can be
+invoked by name.
 
-## External dependency: Sigma's official skills
+### External dependency
 
-`sigma-workbook-conventions` and `branded-dashboard-format` build on Sigma's
-own agent skills — **`sigma-api`** (OAuth → bearer token) and
-**`sigma-data-models`** (data-model spec round-trips). Those ship in Sigma's
-official marketplace plugin, not here. Install that separately for full
-workbook-authoring capability.
+`sigma-workbook-conventions` and `branded-dashboard-format` build on Sigma's own
+agent skills — **`sigma-api`** (OAuth → bearer token) and **`sigma-data-models`**
+(field-level data-model reference). Those ship in Sigma's official marketplace
+plugin, not here.
+
+---
 
 ## Authentication
 
-The `scripts/` here call the Sigma REST API and MCP server. They self-bootstrap
-from a `.env` file (never committed — see `.gitignore`):
+`scripts/` call the Sigma REST API and MCP server, self-bootstrapping from a
+`.env` (never committed):
 
 ```
 SIGMA_BASE_URL=...
@@ -68,93 +199,97 @@ SIGMA_CLIENT_ID=...
 SIGMA_CLIENT_SECRET=...
 ```
 
-On first call, `scripts/api/_env.sh` loads `.env`, fetches an OAuth token via
-the `sigma-api` skill, and caches it at `/tmp/.sigma_token` (0600, 55-min TTL).
-Secrets live only in `.env` and the `Authorization` header — never in specs,
-prompts, or notes.
+On first call `scripts/api/_env.sh` loads `.env`, fetches an OAuth token, and
+caches it at `/tmp/.sigma_token` (0600, 55-min TTL). Secrets live only in `.env`
+and the `Authorization` header — never in specs, prompts, or notes.
 
-## Working with the scripts
+Merge `skills/sigma-workbook-conventions/recommended-permissions.json` into your
+`.claude/settings.json` so discovery calls run without prompting.
 
-`sigma-workbook-conventions` was authored to run **with a workbook project as
-the working directory** — it invokes `scripts/api/*.sh` and
-`python3 scripts/*.py` by relative path. Two ways to use it:
+---
 
-1. **Clone-and-work (matches original design).** Clone this repo, add your
-   `.env`, and run Claude Code with the repo as the working directory. Scripts
-   resolve as-is. Merge `skills/sigma-workbook-conventions/recommended-permissions.json`
-   into your `.claude/settings.json` so discovery calls run without prompts.
-2. **Installed plugin.** The reference/pattern skills (both plugin skills,
-   `sigma-embed-portal`, and the guidance in `branded-dashboard-format`) work
-   fully when installed. For the script-driven parts of
-   `sigma-workbook-conventions`, reference the plugin's copy via
-   `${CLAUDE_PLUGIN_ROOT}/scripts/...` or keep a project checkout per option 1.
-
-> Making the scripts fully path-independent (via `${CLAUDE_PLUGIN_ROOT}`) so the
-> workbook skill runs seamlessly as an installed plugin is a planned follow-up.
-
-## Layout
+## Repo layout
 
 ```
-millersigma/
+customdemo/
 ├── .claude-plugin/
-│   ├── plugin.json         # plugin manifest (skills auto-discovered from skills/)
-│   └── marketplace.json    # makes the repo self-installable via /plugin
-├── skills/                 # one folder per skill, each with SKILL.md
-├── scripts/                # Sigma API/MCP helpers used by the workbook skill
-│   ├── api/                # auth-bootstrapped REST + MCP wrappers
-│   ├── sigma-resolve.py    # messy-input → resolved IDs
-│   └── validate-spec.py    # pre-POST spec validator
-├── docs/                   # conventions, iteration playbook, skill-authoring guide
+│   ├── plugin.json          # manifest (skills auto-discovered from skills/)
+│   └── marketplace.json     # makes the repo self-installable via /plugin
+├── skills/                  # 10 skills, one folder each with SKILL.md
+├── plugins/                 # 10 plugin examples; _scaffold/ is the clone target
+├── scripts/
+│   ├── api/                 # 12 auth-bootstrapped REST + MCP wrappers
+│   ├── profile-table.py     # profile a client table → candidate roles
+│   ├── sigma-resolve.py     # messy input → resolved Sigma IDs
+│   ├── validate-spec.py     # pre-POST workbook validator
+│   ├── validate-datamodel-spec.py   # pre-POST data-model validator
+│   ├── register_plugin.py   # POST /v2/plugins → pluginId
+│   └── fetch_logo.py        # scrape a company's real logo
+├── docs/                    # conventions, iteration playbook, skill authoring
 └── README.md
 ```
 
-## Exemplars & the verified build recipe
+### Working with the scripts
 
-Every branded workbook here is built by a **Python generator that emits `spec.json`**,
-POSTed to `POST /v2/workbooks/spec` (beta), then verified by **data-exporting each
-element** (`/v2/workbooks/{id}/export` → poll `/v2/query/{qid}/download`) to confirm no
-`Invalid Query` and sane numbers — since the composed pixels can't be seen headlessly.
+The script-driven skills expect **a project checkout as the working directory** —
+they invoke `scripts/api/*.sh` and `python3 scripts/*.py` by relative path. Either
+clone this repo and run Claude Code inside it, or reference the installed plugin's
+copy via `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
 
-**Canonical exemplar — copy this, it's the current standard:**
+> Making the scripts fully path-independent via `${CLAUDE_PLUGIN_ROOT}` is a
+> planned follow-up.
 
-| Exemplar | Shows |
+---
+
+## Canonical exemplars
+
+| Path | Use it for |
 |---|---|
-| `skills/sigma-company-dashboard/examples/build_company_command_center.py` | **THE canonical generator — clone THIS one.** Current standard, including the tabbed left-column layout and the read-vs-writeback connection split. |
-| `skills/sigma-byod-data-model/examples/build_byod_data_model.py` | The BYOD generator: a `profile-table.py` profile + role flags → a publishable data-model spec. |
-| `skills/sigma-company-dashboard/examples/build_cava.py` | Kept for reference; **predates several current conventions** (notably the tabbed layout) — not the clone target. Two pages (command center + scenario modeler) on light surfaces: comparative **gradient KPI cards with native, colorable titles** (no SVG-title hacks), a CallText AI insight, control-driven `Switch`/`DateTrunc` filters, a stacked bar w/ drill fields, **side-by-side pivots**, a **bespoke data-bound plugin in a container below the bar**, and **two agents** (a read-only analyst + a Scenario Copilot with an insert-rows tool). Clone it; swap brand + reshape SQL + AI prompt + plugin. |
-| `plugins/cava-daypart/` | The matching **bespoke plugin** — a 7×24 day-part heatmap (`@sigmacomputing/plugin` SDK, synthetic fallback). Register via `POST /v2/plugins` → `pluginId`, host it, embed bound to a synthetic operational source. |
+| `skills/sigma-company-dashboard/examples/build_company_command_center.py` | **THE canonical generator — clone this one.** Tabbed command-center layout, comparative KPI cards, read-vs-writeback connection split. |
+| `skills/sigma-byod-data-model/examples/build_byod_data_model.py` | Profile + role flags → a publishable data-model spec. |
+| `plugins/_scaffold/` | **THE plugin clone target.** Settings JSON, theming, resize, and a real-SDK test suite. |
+| `skills/sigma-company-dashboard/reference/layouts.md` | Six-layout catalog + the decision table for choosing one. |
+| `skills/sigma-company-dashboard/examples/build_cava.py` | Kept for reference; predates several current conventions — **not** the clone target. |
 
-**Defaults these encode** (learned the hard way — see each SKILL.md + the
-`sigma-code-rep-interactivity` agent-memory cheatsheet):
-- **KPIs are comparative gradient cards** with a delta vs a baseline/prior — never plain numbers. Same card format on every page.
-- **Titles are NATIVE** — a `text` element or, on a dark/gradient surface, the host element's own title (`kpi-chart` `name` with a `color`). **Never bake title text into an SVG** (it clips and can't reflow); native `text` on a light surface is dark/high-contrast by default.
-- **Format with `$.3~s` (auto K/M/B); never hard-code `/1e9` "billions"** — it desyncs the AI summary from the KPI cards.
-- **Light surfaces** everywhere (a dark theme makes input tables & dropdowns white-on-white, and forces the banned SVG-title hack).
-- **Real logo** via `scripts/fetch_logo.py <domain>`; fall back to a clean typographic wordmark — never let an image model draw the logo.
-- **Toggles work via control-driven formulas**, not button actions.
-- **Two agents** — a read-only analyst, and a scenario copilot with an `insert-rows` tool (its target input table needs "Editable in published version" in the UI).
-- **A bespoke plugin every build**, matched to the industry. Register via `POST /v2/plugins` → `pluginId`; host on the always-on `localhost:8080` agent. **Fixed placement:** wrapped in a card container, in the left column **directly below the bar chart**, agent beside the bar only, pivots below.
+**Defaults these encode** (each learned the hard way):
 
-## Adding new skills
+- **KPIs are comparative gradient cards** with a delta vs a prior/baseline — never plain numbers.
+- **Titles are native** (`text`, or a `kpi-chart`'s own `name`). Never bake title text into an SVG.
+- **Format with `$.3~s`** (auto K/M/B); never hard-code `/1e9`, which desyncs the AI summary from the cards.
+- **Light canvas, dark accents.** A dark canvas renders control dropdowns and input tables white-on-white.
+- **Theme is code** — the whole palette and font live in top-level `themeOverrides`. (An older doc here claimed otherwise; it was wrong, and it stopped the agent from even trying.)
+- **Real logo** via `scripts/fetch_logo.py <domain>`; fall back to a typographic wordmark — never let an image model draw a logo.
+- **Input tables need a writeback-enabled connection.** Reads don't. Check with `scripts/api/list-connections.sh --writable`.
 
-1. Create `skills/<new-skill-name>/SKILL.md` with YAML frontmatter:
+---
+
+## Adding a skill
+
+1. Create `skills/<name>/SKILL.md` with YAML frontmatter:
    ```yaml
    ---
-   name: <new-skill-name>
+   name: <name>
    description: >-
      One or two sharp sentences on WHEN to use it — this is what Claude
      matches against, so lead with trigger conditions.
    ---
    ```
 2. Add `reference/`, `examples/`, or `assets/` subfolders as needed.
-3. Bump `version` in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
-4. Commit and push. Installed users pick it up with `/plugin marketplace update millersigma`.
+3. Bump `version` in **both** `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+4. Update any sibling skill whose description should route to the new one.
 
-See `docs/skill-authoring.md` for the authoring pattern (sharp descriptions,
-`reference/` split by domain, `examples/` with at least one known-good spec).
+See `docs/skill-authoring.md` for the full pattern.
+
+---
 
 ## Provenance
 
-Consolidated from two upstream repos, now maintained here:
-- Workbook/dashboard/embed skills + scripts — originally `RyanLauderback/ryan-workbook-skill`.
-- Plugin skills — originally `neil-oliver/sigma-plugin-skills` (frontmatter added here).
+Forked from [`cmiller-coder/millersigma`](https://github.com/cmiller-coder/millersigma)
+by Connor Miller, which itself consolidated:
+
+- Workbook / dashboard / embed skills + scripts — originally `RyanLauderback/ryan-workbook-skill`
+- Plugin skills — originally `neil-oliver/sigma-plugin-skills`
+
+This fork adds bring-your-own-data support (profiling + data models as code), the
+layout catalog, the plugin scaffold, and a substantial round of API corrections
+verified against a live org.

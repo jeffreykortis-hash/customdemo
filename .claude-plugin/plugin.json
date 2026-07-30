@@ -1,12 +1,21 @@
 {
-  "name": "millersigma",
+  "name": "customdemo",
   "version": "0.13.0",
-  "description": "Connor Miller's Sigma Computing skill collection — end-to-end company dashboard builder (data model + themed workbook + CallText AI summary + hosted domain plugin), BRING-YOUR-OWN-DATA profiling and data-models-as-code for a client's own Snowflake/Databricks table, workbook conventions, styling, branded dashboard format, embed portals, and plugin development. Skills auto-discovered from ./skills; hosted plugin sources in ./plugins.",
+  "description": "Sigma Computing skill collection for Claude Code — end-to-end branded workbook builder (data model + themed workbook + CallText AI summary + bespoke plugin), bring-your-own-data profiling and data-models-as-code for a client's own Snowflake/Databricks table, a six-layout catalog, workbook conventions and styling, embed portals, and plugin development. Skills auto-discovered from ./skills; plugin sources in ./plugins.",
   "author": {
-    "name": "Connor Miller",
-    "email": "cmiller@sigmacomputing.com"
+    "name": "Jeffrey Kortis",
+    "email": "jeffrey.kortis@sigmacomputing.com"
   },
-  "homepage": "https://github.com/cmiller-coder/millersigma",
-  "repository": "https://github.com/cmiller-coder/millersigma",
-  "keywords": ["sigma", "sigma-computing", "workbook", "dashboard", "plugin", "embed", "skills"]
+  "homepage": "https://github.com/jeffreykortis-hash/customdemo",
+  "repository": "https://github.com/jeffreykortis-hash/customdemo",
+  "keywords": [
+    "sigma",
+    "sigma-computing",
+    "workbook",
+    "dashboard",
+    "data-model",
+    "plugin",
+    "embed",
+    "skills"
+  ]
 }

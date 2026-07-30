@@ -1,18 +1,18 @@
 {
-  "name": "millersigma",
+  "name": "customdemo",
   "owner": {
-    "name": "Connor Miller",
-    "email": "cmiller@sigmacomputing.com"
+    "name": "Jeffrey Kortis",
+    "email": "jeffrey.kortis@sigmacomputing.com"
   },
   "metadata": {
-    "description": "Sigma Computing skills for Claude Code — workbooks, dashboards, embeds, and plugins.",
+    "description": "Sigma Computing skills for Claude Code — workbooks, data models, dashboards, embeds, and plugins.",
     "version": "0.13.0"
   },
   "plugins": [
     {
-      "name": "millersigma",
+      "name": "customdemo",
       "source": "./",
-      "description": "Sigma Computing skill collection: workbook/data-model authoring conventions, workbook styling, branded dashboard format, embed portals, and plugin development."
+      "description": "Sigma Computing skill collection: bring-your-own-data profiling and data models as code, branded workbook builder, layout catalog, workbook conventions and styling, embed portals, and plugin development."
     }
   ]
 }

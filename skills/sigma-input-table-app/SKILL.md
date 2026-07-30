@@ -267,7 +267,7 @@ that references the control by controlId; it recomputes reactively:
 1. Ask up front: base metric + grain, the dimension users create (scenario/forecast/budget),
    whether there's an adjust-via-modal step, and an approval/submit step.
 2. Assets: real logo via `scripts/fetch_logo.py <domain>`; hero via Gemini (key at
-   `~/Desktop/millersigma/gemini.key` — NOT /tmp, which gets pruned) or a bespoke SVG.
+   `~/Desktop/customdemo/gemini.key` — NOT /tmp, which gets pruned) or a bespoke SVG.
 3. Build a Python generator that emits `spec.json`; POST via curl; iterate on the
    `pages[N].elements[M]` index in masked errors.
 4. **QA without eyes on it:** data-export every element
