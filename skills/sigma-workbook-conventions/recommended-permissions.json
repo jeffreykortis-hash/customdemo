@@ -34,6 +34,8 @@
       "Bash(scripts/api/*)",
       "Bash(python3 scripts/sigma-resolve.py:*)",
       "Bash(python3 scripts/validate-spec.py:*)",
+      "Bash(python3 scripts/validate-datamodel-spec.py:*)",
+      "Bash(python3 scripts/profile-table.py:*)",
       "Bash(bash scripts/refresh-vendor.sh:*)",
       "Bash(eval \"$(scripts/load-env.sh)\")",
       "Bash(curl * $SIGMA_BASE_URL/v2/dataModels/*)",

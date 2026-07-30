@@ -10,9 +10,12 @@ the kind is unsupported — it means a **field on that element has the wrong sha
 Bisect by element index; compare the offending element to a GET-back exemplar.
 
 ## Verified element shapes (CURRENT schema)
-- **table (from custom SQL):** `{kind:"table", source:{connectionId, statement, kind:"sql"}, columns:[{id, formula:"[Custom SQL/<OUT>]", name}], name, order:[...]}`.
+- **table (from custom SQL):** `{kind:"table", source:{connectionId, statement, kind:"sql"}, columns:[{id, formula:"[Custom SQL/<OUT>]", name}], name, order:[...]}`. A custom-SQL table MUST declare `columns` — omitting them is the masked `Invalid kind: "table"`.
+- **table (from a warehouse table, DIALECT-FREE):** `{kind:"table", source:{connectionId, kind:"warehouse-table", path:[DB,SCHEMA,TABLE]}, columns:[{id, formula:"[<TABLE_NAME>/<Friendly Col>]", name}], ...}`. Friendly name = `PRODUCT_TYPE` → `Product Type`. No SQL, so the same spec works on Snowflake and Databricks.
+- **table (from a DATA MODEL):** `{kind:"table", source:{kind:"data-model", dataModelId, elementId}, columns:[{id, formula:"[<ElementName>/<Column Name>]", name}], ...}`. Prefer this for BYO client data — see `sigma-byod-data-model`.
 - **kpi-chart:** `{kind:"kpi-chart", source:{elementId, kind:"table"}, columns:[{id, formula, name, format?}], value:{columnId, color}, name:{visibility:"hidden"} | {text,fontWeight,fontSize}, layout:{anchor:"middle"}, style?}`. Comparative KPI: `timeline:{columnId}` + `periodComparison:"month"`. **Encoding uses `columnId`, NOT `id`** (old `value:{id}` → masked Invalid kind).
-- **bar/line/area:** `xAxis:{columnId, sort?, format?}`, `yAxis:{columnIds:[...], format?}` (an OBJECT with `columnIds`, not `[{id}]`). `name`/`legend` accept `{visibility:"hidden"}`. line: `lineAreaStyle:{interpolation:"monotone"}`.
+- **bar/line/area:** the `kind` is **`bar-chart`** / `line-chart` / `area-chart` / `combo-chart` / `donut-chart` / `pie-chart` / `scatter-chart` — bare `"bar"` is the masked `Invalid kind: "bar"`. `xAxis:{columnId, sort?, format?}`, `yAxis:{columnIds:[...], format?}` (an OBJECT with `columnIds`, not `[{id}]` — the `[{id}]` form in `sigma-workbook-conventions/examples/*.json` is an older GET-back; the `columnIds` object form is verified working 2026-07-30).
+- **⚠ A chart/KPI sourced from a table must REDECLARE every field its aggregate touches.** `Sum([Price] * [Quantity])` fails with `Unknown column "[Price]"` unless that element also declares passthrough columns for Price and Quantity. And the passthrough prefix is the **immediate source element's `name`**, not the underlying data model's — table `{name:"Sales"}` → the chart uses `[Sales/Price]`, even when `Sales` itself sources a data model whose element is named something else. Keep table names short and free of punctuation for this reason. `name`/`legend` accept `{visibility:"hidden"}`. line: `lineAreaStyle:{interpolation:"monotone"}`.
 - **series/bar color:** `color:{by:"category", column:<COL-ID>, scheme:[...]}`. `column` must be a SEPARATE column (can't reuse the x/y column). Uniform-color bars → add a duplicate dimension column and color by it (scheme one color) + hide legend.
 - **single-line color:** no per-line override — comes only from `themeOverrides.categoricalScheme[0]`.
 - **region-map:** `{kind:"region-map", source:{elementId,kind:"table"}, columns:[{id,formula},...], region:{id:<stateColId>, regionType:"us-state"}, color:{by:"scale", column:<metricColId>}}`.
@@ -62,6 +65,39 @@ element sourcing works** (a chart on page A can source a table on page B).
 Token via `scripts/get-token-staging.sh` (client_credentials → bearer); clear
 `/tmp/.sigma_token` when switching creds. Netlify CLI authed; create a UNIQUE
 site then deploy with an explicit `--site`.
+
+## Data models as code (verified 2026-07-30, papercranestaging, Snowflake + Databricks)
+`scripts/api/publish-datamodel.sh post|put|get-spec|verify` wraps
+`/v2/dataModels/spec`. Driven by the **`sigma-byod-data-model`** skill.
+- **Responses are JSON**, not YAML: `{"success":true,"dataModelId":"..."}`. The
+  workbook endpoint returns `{"success":true,"workbookId":"..."}` too — an older
+  note in this repo claiming YAML is stale.
+- **Submitted ids are PRESERVED**, not remapped. Reference them immediately.
+- **Column ids are arbitrary.** UI-built models show `inode-<slug>/<COL>`, which
+  matches neither the table's `inodeId` nor its URL slug. `c-price` works fine.
+- Passthrough column → `[<ElementName>/<Friendly Name>]`. Computed columns and
+  **all metrics** use BARE sibling refs (`[Price] - [Cost]`,
+  `Sum([Unit Margin] * [Quantity])`). Metrics may reference computed columns.
+- `metrics[].timeline` = `{dateColumnId, truncation, comparison:{comparisonPeriod}}`
+  and round-trips exactly. **`comparison.direction` is REJECTED.**
+- `format` on a data-model column/metric is rejected (`Missing "kind" field`).
+- **HTTP 200 proves almost nothing here.** A formula referencing a nonexistent
+  column is ACCEPTED and becomes a column of type `error`, visible only via
+  `mcp-describe.sh datamodel-element`. Duplicate column names are accepted and
+  the second is silently renamed `Name (1)`. `scripts/validate-datamodel-spec.py`
+  catches both pre-POST and `publish-datamodel.sh` runs it plus an auto-verify.
+- `/v2/files` type filter is **`data-model`** (hyphenated); legacy uploads are
+  type `dataset`. A model sourced from an uploaded CSV can't `get-spec` at all.
+
+## Writeback (verified 2026-07-30)
+`/v2/connections` exposes **`writeAccess`** (`true`/`null`) and **`writebacks`**
+(`[{database, schema}]`). Input tables, warehouse views, materialization and CSV
+upload all require write access; reads do not — so a read-only connection yields
+a workbook whose charts work and whose input tables silently do nothing. Use
+`scripts/api/list-connections.sh --writable`. It's an Admin-only toggle
+(Administration → Connections → Enable write access + a destination): Snowflake
+takes a schema, Databricks a catalog + schema. Only 16 of 52 connections in the
+staging org qualified.
 
 ## More gotchas (verified 2026-07-24, demeng, scatter-lasso plugin build)
 - **Cloudflare WAF blocks any JSON key CONTAINING the substring "field"** (case-sensitive,

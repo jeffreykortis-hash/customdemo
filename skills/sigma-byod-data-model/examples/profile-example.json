@@ -1,0 +1,189 @@
+{
+  "source": {
+    "connectionId": "00000000-0000-0000-0000-000000000000",
+    "connectionName": "Acme Databricks",
+    "connectionType": "databricks",
+    "writeAccess": true,
+    "writebacks": [
+      {
+        "database": "solutions_engineering",
+        "schema": "sigma_writeback"
+      }
+    ],
+    "path": [
+      "se_demo_db",
+      "big_buys",
+      "big_buys_pos"
+    ],
+    "inodeId": "11111111-1111-1111-1111-111111111111",
+    "suggestedElementName": "big_buys_pos"
+  },
+  "rowCount": 10006429,
+  "columns": [
+    {
+      "name": "ORDER_NUMBER",
+      "sigmaName": "Order Number",
+      "warehouseType": "number",
+      "description": "Unique identifier for an order. A single order can span multiple rows - one per product/SKU purchased",
+      "nonNull": 10006429,
+      "distinct": 3068402,
+      "nullRate": 0.0,
+      "cardinalityRatio": 0.306643,
+      "min": "1000000000",
+      "max": "1003125243",
+      "role": "identifier"
+    },
+    {
+      "name": "DATE",
+      "sigmaName": "Date",
+      "warehouseType": "datetime",
+      "description": "Date the order was placed",
+      "nonNull": 10006429,
+      "distinct": 3020487,
+      "nullRate": 0.0,
+      "cardinalityRatio": 0.301855,
+      "min": "2021-02-21 06:09:59",
+      "max": "2025-02-19 19:09:07",
+      "role": "date"
+    },
+    {
+      "name": "QUANTITY",
+      "sigmaName": "Quantity",
+      "warehouseType": "number",
+      "description": "Number of units of this product sold on this order line",
+      "nonNull": 10006429,
+      "distinct": 9,
+      "nullRate": 0.0,
+      "cardinalityRatio": 1e-06,
+      "min": "1",
+      "max": "10",
+      "role": "measure"
+    },
+    {
+      "name": "COST",
+      "sigmaName": "Cost",
+      "warehouseType": "number",
+      "description": "Per-unit cost of goods \u2014 what Big Buys paid the merchant to acquire this product. Typically less than PRICE",
+      "nonNull": 10006429,
+      "distinct": 2003,
+      "nullRate": 0.0,
+      "cardinalityRatio": 0.0002,
+      "min": "1.59",
+      "max": "3934.73",
+      "role": "measure"
+    },
+    {
+      "name": "PRICE",
+      "sigmaName": "Price",
+      "warehouseType": "number",
+      "description": "Per-unit price charged to the customer at time of sale. Typically greater than COST",
+      "nonNull": 10006429,
+      "distinct": 112008,
+      "nullRate": 0.0,
+      "cardinalityRatio": 0.011194,
+      "min": "2.52",
+      "max": "7274.44",
+      "role": "measure"
+    },
+    {
+      "name": "PRODUCT_TYPE",
+      "sigmaName": "Product Type",
+      "warehouseType": "text",
+      "description": "Level 1 (broadest) of the product hierarchy. Values: Accessories, Computers, Smart Home, Audio, Gaming, Video, Mobile Devices, Networking. Hierarchy: PRODUCT_TYPE \u2192 PRODUCT_FAMILY \u2192 PRODUCT_LINE \u2192 PRODUCT_NAME",
+      "nonNull": 10006429,
+      "distinct": 8,
+      "nullRate": 0.0,
+      "cardinalityRatio": 1e-06,
+      "min": null,
+      "max": null,
+      "role": "dimension"
+    },
+    {
+      "name": "STORE_REGION",
+      "sigmaName": "Store Region",
+      "warehouseType": "text",
+      "description": "US geographic region of the store. Values: West, Southwest, Midwest, South, Northeast. Hierarchy: STORE_REGION \u2192 STORE_STATE \u2192 STORE_CITY \u2192 STORE_ZIP_CODE",
+      "nonNull": 10006429,
+      "distinct": 6,
+      "nullRate": 0.0,
+      "cardinalityRatio": 1e-06,
+      "min": null,
+      "max": null,
+      "role": "dimension"
+    },
+    {
+      "name": "CUSTOMER_NAME",
+      "sigmaName": "Customer Name",
+      "warehouseType": "text",
+      "description": "Display name of the customer. Not guaranteed unique \u2014 use CUST_KEY for joining, grouping, or counting distinct customers.",
+      "nonNull": 10006429,
+      "distinct": 62269,
+      "nullRate": 0.0,
+      "cardinalityRatio": 0.006223,
+      "min": null,
+      "max": null,
+      "role": "high-cardinality"
+    }
+  ],
+  "candidates": {
+    "dateColumn": [
+      {
+        "name": "DATE",
+        "sigmaName": "Date",
+        "why": "date/datetime type; type=datetime, 3020487 distinct, 0.00% null"
+      }
+    ],
+    "grainKey": [
+      {
+        "name": "ORDER_NUMBER",
+        "sigmaName": "Order Number",
+        "why": "near-unique; type=number, 3068402 distinct, 0.00% null"
+      }
+    ],
+    "measures": [
+      {
+        "name": "QUANTITY",
+        "sigmaName": "Quantity",
+        "why": "numeric, not id-shaped; type=number, 9 distinct, 0.00% null"
+      },
+      {
+        "name": "COST",
+        "sigmaName": "Cost",
+        "why": "numeric, not id-shaped; type=number, 2003 distinct, 0.00% null"
+      },
+      {
+        "name": "PRICE",
+        "sigmaName": "Price",
+        "why": "numeric, not id-shaped; type=number, 112008 distinct, 0.00% null"
+      }
+    ],
+    "dimensions": [
+      {
+        "name": "STORE_REGION",
+        "sigmaName": "Store Region",
+        "distinct": 6
+      },
+      {
+        "name": "PRODUCT_TYPE",
+        "sigmaName": "Product Type",
+        "distinct": 8
+      }
+    ],
+    "excluded": [
+      {
+        "name": "CUSTOMER_NAME",
+        "sigmaName": "Customer Name",
+        "why": "too many distinct values to filter on; type=text, 62269 distinct, 0.00% null"
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "code": "stale-max-date",
+      "detail": "max(DATE)=2025-02-19 is 526d ago \u2014 anchor period tagging to the table's max date, not Today()."
+    }
+  ],
+  "profiledVia": "workbook",
+  "probeWorkbookId": "<scratch workbook id \u2014 delete after profiling>",
+  "cleanup": "DELETE https://<host>/v2/files/<probeWorkbookId>"
+}

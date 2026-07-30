@@ -1,7 +1,7 @@
 {
   "name": "millersigma",
-  "version": "0.11.0",
-  "description": "Connor Miller's Sigma Computing skill collection — end-to-end company dashboard builder (data model + themed workbook + CallText AI summary + hosted domain plugin), workbook conventions, styling, branded dashboard format, embed portals, and plugin development. Skills auto-discovered from ./skills; hosted plugin sources in ./plugins.",
+  "version": "0.12.0",
+  "description": "Connor Miller's Sigma Computing skill collection — end-to-end company dashboard builder (data model + themed workbook + CallText AI summary + hosted domain plugin), BRING-YOUR-OWN-DATA profiling and data-models-as-code for a client's own Snowflake/Databricks table, workbook conventions, styling, branded dashboard format, embed portals, and plugin development. Skills auto-discovered from ./skills; hosted plugin sources in ./plugins.",
   "author": {
     "name": "Connor Miller",
     "email": "cmiller@sigmacomputing.com"
