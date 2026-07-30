@@ -41,6 +41,12 @@
 <script>
 (function(){
   var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
   var PALETTE=['#0B2E5E','#117ACA','#2E6FB0','#1E9AD6','#5B4B8A','#B99A5B','#0E7C7B','#C77D2E'];
   var NS='http://www.w3.org/2000/svg', PAD=0.055, TWO=Math.PI*2, tip=document.getElementById('tip');
   var defs=[
@@ -139,7 +145,7 @@
   }
   if(client){ client.config.subscribe(function(cfg){ stt.cfg=cfg||{};
     if(stt.unsub){stt.unsub();stt.unsub=null;}
-    if(cfg&&cfg.source){ stt.unsub=client.elements.subscribeToElementData(cfg.source,function(d){ stt.data=d; recompute(); }); }
+    if(cfg&&cfg.source){ stt.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(d){ stt.data=d; recompute(); }); }
     recompute(); });
   } else { recompute(); }
   window.addEventListener('resize',function(){ recompute(); });

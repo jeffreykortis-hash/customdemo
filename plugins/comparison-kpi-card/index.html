@@ -54,6 +54,12 @@
 (function(){
   var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
 
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
   var cfgDefs = [
     { name:'source',   type:'element' },
     { name:'dimension',type:'column', source:'source', allowMultiple:false, allowedTypes:['datetime','date','number','integer','text'], label:'Trend order (date/x)' },
@@ -180,7 +186,7 @@
       state.cfg=config||{};
       if (state.unsub){ state.unsub(); state.unsub=null; }
       if (config && config.source){
-        state.unsub = client.elements.subscribeToElementData(config.source, function(data){ state.data=data; recompute(); });
+        state.unsub = client.elements.subscribeToElementData(srcId(config.source), function(data){ state.data=data; recompute(); });
       }
       recompute();
     });

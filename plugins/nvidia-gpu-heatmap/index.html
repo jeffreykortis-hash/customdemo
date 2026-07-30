@@ -41,6 +41,12 @@
 <script>
 (function(){
   var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
   var defs=[
     {name:'source',type:'element'},
     {name:'node',type:'column',source:'source',label:'Node ID'},
@@ -96,7 +102,7 @@
   }
   if(client){client.config.subscribe(function(cfg){st.cfg=cfg||{};
     if(st.unsub){st.unsub();st.unsub=null;}
-    if(cfg&&cfg.source){st.unsub=client.elements.subscribeToElementData(cfg.source,function(d){st.data=d;recompute();});}
+    if(cfg&&cfg.source){st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(d){st.data=d;recompute();});}
     recompute();});
   }else{recompute();}
 })();
