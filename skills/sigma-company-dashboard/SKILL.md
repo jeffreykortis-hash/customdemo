@@ -15,6 +15,10 @@ description: >-
   a "branded dashboard for [company]", "reshape sample data into [industry]", or a
   personalized Sigma demo. Driving a company build from the building blocks instead
   yields a generic dashboard with no fetched logo and no bespoke plugin — use this.
+  If the user brings ARTIFACTS instead of answers — screenshots or a PDF of their
+  EXISTING dashboard, a CALL TRANSCRIPT or discovery notes describing a process —
+  run **sigma-discovery-brief** FIRST to turn them into a provenanced `brief.json`,
+  then build from that instead of interviewing them.
   Encodes the VERIFIED current-API element shapes + masked-error gotchas; always clone
   shapes from a recent GET-back, not from stale docs.
 ---
@@ -23,6 +27,25 @@ description: >-
 
 Given a company name, produce a polished branded Sigma workbook + a domain plugin,
 entirely from code. Proven across multiple retail, CPG, and tech companies.
+
+## MOVE ZERO — did they hand you artifacts instead of answers?
+If there are **screenshots of an existing dashboard** (Tableau/Power BI/Looker/Excel/
+Sigma), a **PDF export**, a **call transcript**, or **discovery notes** — or the user
+attaches images to the build request — run **`sigma-discovery-brief`** before asking
+anything. It triages the files, reads them, and produces a `brief.json` whose every
+decision carries a provenance locator, gated by a human readout. Then build **from the
+brief**: `decisions.layout`, `decisions.kpis`, `decisions.pluginConcept`,
+`decisions.page2Pattern` and `decisions.dataSourcing` are exactly the answers the
+questions below would have asked for.
+
+A brief **replaces** those questions rather than adding to them — ask only the residue
+it lists in `needsInput` (usually grain, comparison basis, metric definitions, refresh
+window), in one message. Three questions is still the ceiling. Two rules carry over
+into the build: **screenshot numbers are never reproduced** (take the shape, generate
+the values), and a **screenshot of a working dashboard is not data access** — a
+recreate-this ask with no connection is the synthetic path.
+
+No artifacts? Skip to the first question.
 
 ## FIRST QUESTION — sample data, their own table, or synthetic?
 Before anything else, ask: **"Should this run on sample data reshaped into your

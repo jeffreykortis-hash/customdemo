@@ -1,0 +1,327 @@
+{
+  "specVersion": 1,
+  "generatedAt": "2026-07-30",
+  "exampleNote": "EXAMPLE — 'Acme Freight' is fictional. The transcript artifact (a5) is real and its line citations resolve; the image artifacts (a1-a4, a6) are illustrative and are not shipped in this repo. Gate-clean: `python3 scripts/validate-brief.py skills/sigma-discovery-brief/examples/brief.example.json` passes.",
+  "company": {
+    "name": "Acme Freight",
+    "domain": "acmefreight.example",
+    "origin": "asked"
+  },
+  "artifacts": [
+    {
+      "id": "a1",
+      "path": "artifacts/acme-full-dashboard.png",
+      "kind": "image",
+      "bytes": 1840221,
+      "readWith": "Read",
+      "readable": true,
+      "width": 2880,
+      "height": 4120,
+      "fills": "observed",
+      "flags": ["needs-crop", "full-page-scroll-capture"],
+      "notes": [
+        "long edge 4120px > 1568px — downscaled before the model sees it; used for LAYOUT SHAPE only, no label or value read from it",
+        "Tableau"
+      ]
+    },
+    {
+      "id": "a2",
+      "path": "artifacts/acme-kpi-band.png",
+      "kind": "image",
+      "bytes": 214882,
+      "readWith": "Read",
+      "readable": true,
+      "width": 1420,
+      "height": 360,
+      "fills": "observed",
+      "flags": [],
+      "notes": ["section crop at 100% zoom — tile labels legible"]
+    },
+    {
+      "id": "a3",
+      "path": "artifacts/acme-dwell-grid.png",
+      "kind": "image",
+      "bytes": 198440,
+      "readWith": "Read",
+      "readable": true,
+      "width": 1180,
+      "height": 720,
+      "fills": "observed",
+      "flags": [],
+      "notes": ["the non-standard visual: hour columns x lane rows, cells colored by backlog"]
+    },
+    {
+      "id": "a4",
+      "path": "artifacts/acme-lane-table.png",
+      "kind": "image",
+      "bytes": 302118,
+      "readWith": "Read",
+      "readable": true,
+      "width": 1360,
+      "height": 820,
+      "fills": "observed",
+      "flags": ["pii-present"],
+      "notes": ["consignee names visible in column 2 — cropped out before use"]
+    },
+    {
+      "id": "a5",
+      "path": "skills/sigma-discovery-brief/examples/discovery-call.transcript.txt",
+      "kind": "transcript",
+      "bytes": 5602,
+      "readWith": "Read",
+      "readable": true,
+      "lines": 121,
+      "words": 1028,
+      "estimatedMinutes": 7.3,
+      "fills": "stated",
+      "flags": ["pii-present"],
+      "notes": ["speakers: Dana Ruiz (VP Transportation Ops), Priya Nadar (Pricing Analyst)"]
+    },
+    {
+      "id": "a6",
+      "path": "artifacts/acme-call-recording.m4a",
+      "kind": "av",
+      "bytes": 41882110,
+      "readWith": null,
+      "readable": false,
+      "fills": null,
+      "flags": ["unreadable"],
+      "notes": ["not readable; a5 is the text transcript of this recording, so nothing is lost. Never cited."]
+    }
+  ],
+
+  "observed": {
+    "layoutEvidence": {
+      "tiles": 4,
+      "charts": 2,
+      "controls": 3,
+      "tabs": [],
+      "detailTable": true,
+      "oddVisual": "cell grid, hour x lane, colored by backlog",
+      "canvas": "light",
+      "tool": "Tableau",
+      "source": [
+        {"artifact": "a1", "region": "whole page, top to bottom"},
+        {"artifact": "a2", "region": "KPI band"}
+      ]
+    },
+    "tiles": [
+      {"label": "On-Time Delivery", "formatShape": "percent, 1 decimal", "hasDelta": true, "hasSparkline": false,
+       "source": {"artifact": "a2", "region": "KPI band, tile 1"}},
+      {"label": "Cost per Mile", "formatShape": "currency, 2 decimals", "hasDelta": true, "hasSparkline": false,
+       "source": {"artifact": "a2", "region": "KPI band, tile 2"}},
+      {"label": "Avg Dwell (hrs)", "formatShape": "number, 1 decimal", "hasDelta": true, "hasSparkline": false,
+       "source": {"artifact": "a2", "region": "KPI band, tile 3"}},
+      {"label": "Claims Rate", "formatShape": "percent, 2 decimals", "hasDelta": false, "hasSparkline": false,
+       "source": {"artifact": "a2", "region": "KPI band, tile 4"}}
+    ],
+    "charts": [
+      {"kind": "line", "xLabel": "Week", "yLabel": "On-Time %", "stacked": false, "legend": ["On-Time %"],
+       "source": {"artifact": "a1", "region": "mid page, below the KPI band"}},
+      {"kind": "table", "xLabel": null, "yLabel": null, "stacked": false,
+       "legend": ["Lane", "Consignee", "Region", "Loads", "Cost/Mi", "On-Time %", "Dwell", "+ ~20 more"],
+       "source": {"artifact": "a4", "region": "bottom detail table"}}
+    ],
+    "controls": [
+      {"kind": "date-range", "label": "Ship Date", "source": {"artifact": "a1", "region": "control bar, left"}},
+      {"kind": "list", "label": "Region", "source": {"artifact": "a1", "region": "control bar, middle"}},
+      {"kind": "list", "label": "Carrier", "source": {"artifact": "a1", "region": "control bar, right"}}
+    ],
+    "palette": ["#1f77b4", "#ff7f0e", "#d62728", "#7f7f7f"],
+    "vocabulary": ["lane", "dwell", "consignee", "linehaul", "accessorials", "loaded miles"]
+  },
+
+  "stated": {
+    "process": [
+      {"step": 1, "what": "Monday 9am lane review with the four regional managers, on the Tableau dashboard",
+       "actor": "VP Transportation Ops", "frequency": "weekly",
+       "source": {"artifact": "a5", "line": 13, "timestamp": "00:01:05"}},
+      {"step": 2, "what": "spend the first ten minutes arguing about whether the numbers are right",
+       "actor": "the room", "frequency": "weekly",
+       "source": {"artifact": "a5", "line": 15}},
+      {"step": 3, "what": "export the lane summary to Excel and reforecast rates for the lanes off plan",
+       "actor": "Pricing Analyst", "frequency": "weekly",
+       "source": {"artifact": "a5", "line": 53, "timestamp": "00:08:15"}},
+      {"step": 4, "what": "type a new rate per lane; the sheet recalculates margin",
+       "actor": "Pricing Analyst", "frequency": "weekly",
+       "source": {"artifact": "a5", "line": 55}},
+      {"step": 5, "what": "send to the VP for sign-off, then the controller, then somebody re-keys it into the TMS",
+       "actor": "VP, then Controller", "frequency": "weekly",
+       "source": {"artifact": "a5", "line": 56}}
+    ],
+    "metrics": [
+      {"name": "On-Time Delivery", "definition": "deliveries arriving inside the customer appointment window / all deliveries; a reschedule does NOT count as late under the current definition",
+       "comparison": "prior-month", "direction": "up-is-good",
+       "source": {"artifact": "a5", "line": 29, "quote": "on time if it arrives inside the appointment window"}},
+      {"name": "Cost per Mile", "definition": "(linehaul + accessorials) / loaded miles",
+       "comparison": "plan", "direction": "down-is-good",
+       "source": {"artifact": "a5", "line": 39}},
+      {"name": "Average Dwell Hours", "definition": "avg(hours between facility arrival and departure)",
+       "comparison": "prior-month", "direction": "down-is-good",
+       "source": {"artifact": "a5", "line": 42}},
+      {"name": "Claims Rate", "definition": "claims filed / total shipments",
+       "comparison": "prior-year", "direction": "down-is-good",
+       "source": {"artifact": "a5", "line": 43}}
+    ],
+    "personas": [
+      {"role": "VP Transportation Ops", "when": "Monday 9am, on a projector", "decides": "which lanes to escalate",
+       "source": {"artifact": "a5", "line": 13}},
+      {"role": "four regional managers", "when": "Monday review", "decides": "regional follow-up",
+       "source": {"artifact": "a5", "line": 13}},
+      {"role": "Pricing Analyst", "when": "after the review, all Monday", "decides": "new lane rates",
+       "source": {"artifact": "a5", "line": 53}},
+      {"role": "the board", "when": "monthly, one slide", "decides": "nothing operational — explicitly out of scope",
+       "source": {"artifact": "a5", "line": 72}}
+    ],
+    "cadence": "weekly, Monday morning; a separate monthly board slide that is out of scope",
+    "pains": [
+      {"what": "the reforecast is manual in Excel", "cost": "4-5 hours every week",
+       "source": {"artifact": "a5", "line": 59}},
+      {"what": "nobody trusts the number; the extract is a week stale", "cost": "10 minutes of arguing per review",
+       "source": {"artifact": "a5", "line": 76}},
+      {"what": "the lane table has ~1200 rows and is unreadable on the projector", "cost": "the off-plan lanes get missed",
+       "source": {"artifact": "a5", "line": 67}},
+      {"what": "no owner for the on-time definition", "cost": "the definition is contested in the room",
+       "source": {"artifact": "a5", "line": 98}}
+    ],
+    "quotes": [
+      {"text": "if I could type the new rate right into the thing and have it save, that alone is my whole Monday back",
+       "source": {"artifact": "a5", "line": 95}, "useInWorkbook": false},
+      {"text": "Don't make it look like Tableau.",
+       "source": {"artifact": "a5", "line": 111}, "useInWorkbook": false}
+    ]
+  },
+
+  "decisions": {
+    "dataSourcing": {
+      "value": "synthetic",
+      "origin": "stated",
+      "source": {"artifact": "a5", "line": 82, "quote": "I can't hand you a table for a demo ... you'll have to make the data up"},
+      "syntheticBannerPlanned": true,
+      "schemaOffered": true,
+      "rationale": "They run on Snowflake but a connection is a six-week security review. A screenshot of a working dashboard is not data access. Take the lane schema they offered into sigma-synthetic-star-model: shipment fact + lane, region, carrier-tier dimensions."
+    },
+    "layout": {
+      "value": "command-center",
+      "origin": "observed",
+      "source": [
+        {"artifact": "a1", "region": "whole page: 4 tiles -> trend -> wide lane table, plus a non-standard grid visual"},
+        {"artifact": "a2", "region": "KPI band, 4 comparative tiles"}
+      ],
+      "rationale": "4 measures, an ops audience, and a bespoke grid visual already on screen. They asked for no scrolling on the projector (a5:112), which points at exec-brief, but a ~1200-lane detail is in scope — so command-center with the detail in a TAB, which satisfies both: one screen, no scroll, detail one click away.",
+      "conflictNoted": "exec-brief vs command-center — resolved in the readout, human agreed"
+    },
+    "pages": [
+      {"name": "Lane Review", "purpose": "the Monday 9am review, on a projector",
+       "tabs": ["Dwell Grid", "Cost Trend", "Lane Detail"],
+       "origin": "observed",
+       "source": {"artifact": "a1", "region": "page structure: KPI band, trend, detail table"},
+       "rationale": "Steps 1-2 of the process, one audience, one population -> one page with tabs."},
+      {"name": "Rate Reforecast", "purpose": "replace the Excel round-trip",
+       "tabs": ["Adjust Rates", "Change Log"],
+       "origin": "stated",
+       "source": {"artifact": "a5", "line": 53, "quote": "export the lane summary to Excel and reforecast the rates"},
+       "rationale": "Steps 3-5 have a different actor and a write-back, so a separate page, not a tab."}
+    ],
+    "kpis": [
+      {"name": "On-Time Delivery",
+       "definition": "deliveries arriving inside the appointment window / all deliveries (reschedules not counted late)",
+       "comparison": "prior-month", "direction": "up-is-good", "format": "percent, 1 decimal",
+       "origin": "stated", "source": {"artifact": "a5", "line": 29},
+       "openQuestion": "whether a reschedule should count as late is contested (a5:34) and has no owner (a5:98) — built to the current definition, flagged on the page"},
+      {"name": "Cost per Mile",
+       "definition": "(linehaul + accessorials) / loaded miles",
+       "comparison": "plan", "direction": "down-is-good", "format": "$,.2f",
+       "origin": "stated", "source": {"artifact": "a5", "line": 39},
+       "note": "plan is set quarterly, so the comparison column is quarterly plan, not prior period"},
+      {"name": "Average Dwell Hours",
+       "definition": "avg(hours between facility arrival and departure)",
+       "comparison": "prior-month", "direction": "down-is-good", "format": "number, 1 decimal",
+       "origin": "stated", "source": {"artifact": "a5", "line": 42},
+       "threshold": {"goal": 4, "red": 6, "unit": "hours", "confirmedWithHuman": true,
+                     "note": "spoken as words on the call (a5:48) — 'four' and 'six' are exactly what auto-transcription mangles, so both were read back and confirmed"}},
+      {"name": "Claims Rate",
+       "definition": "claims filed / total shipments",
+       "comparison": "prior-year", "direction": "down-is-good", "format": "percent, 2 decimals",
+       "origin": "stated", "source": {"artifact": "a5", "line": 43},
+       "note": "year-over-year on purpose: small numerator"}
+    ],
+    "charts": [
+      {"kind": "line", "dimension": "Ship Week", "measures": ["On-Time %", "Cost per Mile"],
+       "purpose": "the trend they already have, grain-controlled",
+       "origin": "observed", "source": {"artifact": "a1", "region": "mid page, below the KPI band"}},
+      {"kind": "bar", "dimension": "Lane", "measures": ["Variance to Plan %"],
+       "purpose": "surface the ~40-50 lanes off plan by >15% instead of scrolling 1200 rows",
+       "origin": "stated", "source": {"artifact": "a5", "line": 65, "quote": "the ones off plan by more than fifteen percent"}},
+      {"kind": "pivot", "dimension": "Region > Lane", "measures": ["Loads", "Cost per Mile", "On-Time %", "Dwell"],
+       "purpose": "the detail tab; 6 columns, not the ~27 on their crosstab, and no consignee column",
+       "origin": "observed", "source": {"artifact": "a4", "region": "bottom detail table, column headers"}}
+    ],
+    "filters": [
+      {"kind": "date-range", "column": "Ship Date", "default": "last 13 weeks",
+       "origin": "stated", "source": {"artifact": "a5", "line": 13, "quote": "Monday morning is the lane review"},
+       "rationale": "weekly cadence -> week grain default"},
+      {"kind": "segmented", "column": "Region", "default": "All",
+       "origin": "stated", "source": {"artifact": "a5", "line": 102, "quote": "Midwest, Southeast, West and Northeast"},
+       "rationale": "4 values -> segmented, not a list control"},
+      {"kind": "segmented", "column": "Carrier Tier", "default": "All",
+       "origin": "stated", "source": {"artifact": "a5", "line": 106, "quote": "Contract, Spot and Dedicated"}}
+    ],
+    "pluginConcept": {
+      "value": "Lane Dwell Clock",
+      "whatItShows": "hour-of-day columns x lane rows, each cell shaded by dwell hours against the 4h goal / 6h red threshold",
+      "dataElement": "its own custom-SQL element of synthetic hourly dwell rows",
+      "origin": "observed",
+      "source": {"artifact": "a3", "region": "the grid visual: hour columns, lane rows, backlog coloring"},
+      "rationale": "They already built this shape themselves and it is the only part the regionals like (a5:23-25); the call asked for it as the centerpiece (a5:91). Strongest possible plugin signal — no need to propose alternatives.",
+      "reminder": "re-pick the source element in the editor panel after the POST, or it renders its synthetic fallback"
+    },
+    "page2Pattern": {
+      "value": "input-table",
+      "origin": "stated",
+      "source": [
+        {"artifact": "a5", "line": 53, "quote": "export the lane summary to Excel and reforecast the rates"},
+        {"artifact": "a5", "line": 95, "quote": "if I could type the new rate right into the thing and have it save"}
+      ],
+      "writebackConnectionConfirmed": true,
+      "rationale": "A spreadsheet round-trip with a sign-off step is the decisive write-back tell. Rate adjustment + change log, per sigma-input-table-app.",
+      "note": "writeback connection verified with scripts/api/list-connections.sh --writable before promising the page"
+    },
+    "brandKit": {
+      "logoSource": "python3 scripts/fetch_logo.py acmefreight.example",
+      "accent": "brand gradient header, light canvas",
+      "font": "brand font if the site exposes one",
+      "origin": "default",
+      "confirmed": true,
+      "rationale": "Acme Freight is fictional so fetch_logo has nothing to fetch — a typographic wordmark is the documented fallback. Their Tableau palette (a1) is deliberately NOT reused: 'don't make it look like Tableau' (a5:111), and this repo's canvas is always light."
+    }
+  },
+
+  "piiFlags": [
+    {"artifact": "a4", "kind": "consignee-names", "count": 12, "region": "detail table, column 2",
+     "resolution": "cropped", "resolved": true},
+    {"artifact": "a5", "kind": "email", "count": 2, "lines": [114, 115],
+     "resolution": "excluded", "resolved": true},
+    {"artifact": "a5", "kind": "phone", "count": 1, "lines": [116],
+     "resolution": "excluded", "resolved": true}
+  ],
+
+  "needsInput": [
+    {"code": "grain", "question": "One row of the underlying data = what?",
+     "answer": "one shipment; dwell is per shipment-facility event, so the dwell grid needs its own hourly element"},
+    {"code": "data-sourcing", "question": "Their table, the sample reshaped, or nothing to point at?",
+     "answer": "nothing to point at — synthetic star from the lane schema they send (a5:87)"},
+    {"code": "comparison-basis", "question": "Each KPI is compared against what?",
+     "answer": "on-time and dwell vs prior month, cost per mile vs quarterly plan, claims rate vs prior year"},
+    {"code": "metric-definitions", "question": "Exact numerator/denominator/filter per KPI?",
+     "answer": "all four stated on the call; reschedule handling in on-time is contested and built to the current definition"},
+    {"code": "refresh-and-window", "question": "How current, and what default window?",
+     "answer": "daily is plenty (today's is weekly and resented); page defaults to the last 13 weeks"},
+    {"code": "pii", "question": "What may leave their org?",
+     "answer": "no consignee names, no attendee contact details; region and carrier tier are fine"},
+    {"code": "recapture", "question": "a1 will read blurry — ask for section crops?",
+     "answer": "yes — a2/a3/a4 are the crops they sent back; a1 used for layout shape only"}
+  ],
+
+  "confirmedBy": "Dana Ruiz + Priya Nadar, on the readout — 2026-07-30"
+}

@@ -5,7 +5,7 @@ workbooks and dashboards, data models, data apps, embed portals, and custom
 visualization plugins. Install it once and every skill below becomes available in
 any project.
 
-Eleven skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
+Twelve skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
 Everything here is authored against the **verified** shape of the Sigma API — the
 reference docs record what was actually observed on a live org, including the
 places where the endpoint accepts something and then silently does nothing with it.
@@ -16,7 +16,11 @@ places where the endpoint accepts something and then silently does nothing with 
 
 ```mermaid
 flowchart TD
-    Start([What are you building?]) --> Q1{Branded dashboard,<br/>POV or demo<br/>for a company?}
+    Start([What are you building?]) --> Q0{"Did they hand you<br/>SCREENSHOTS or a<br/>CALL TRANSCRIPT?"}
+
+    Q0 -->|yes| DB["sigma-discovery-brief<br/><i>artifacts → provenanced brief.json</i>"]
+    DB --> FD
+    Q0 -->|no| Q1{Branded dashboard,<br/>POV or demo<br/>for a company?}
 
     Q1 -->|yes| FD["⭐ sigma-company-dashboard<br/><i>the front door — composes the rest</i>"]
     Q1 -->|no| Q2{Users ENTER<br/>or SAVE values?}
@@ -40,6 +44,7 @@ flowchart TD
     style FD fill:#fff3cd,stroke:#d39e00,stroke-width:2px
     style BYOD fill:#e7f5ff,stroke:#1971c2
     style SYN fill:#e7f5ff,stroke:#1971c2
+    style DB fill:#e6fcf5,stroke:#0ca678
 ```
 
 > ⚠️ **Common mistake:** driving a company build from `branded-dashboard-format` +
@@ -54,6 +59,7 @@ flowchart TD
 | Skill | What it does |
 |---|---|
 | ⭐ **sigma-company-dashboard** | **START HERE.** End-to-end branded workbook: real fetched logo, brand-gradient header, comparative gradient KPI cards, a live CallText AI insight, charts + filters, a **bespoke domain plugin**, and a second interactive page. Ships the verified API cheatsheet, the six-layout catalog, and the canonical generator. |
+| **sigma-discovery-brief** | **They brought artifacts, not answers.** Read screenshots of their existing dashboard and the discovery-call transcript, and turn them into a reviewable `brief.json` — layout, KPIs with a comparison basis, pages, plugin concept, page-2 pattern — where every field cites the artifact that justifies it. Screenshots decide FORM, transcripts decide FUNCTION; numbers on a tile are reproduced as a *shape*, never as values. |
 | **sigma-byod-data-model** | **Bring your own data.** Profile a client's warehouse table (types, cardinality, null rates, date range, candidate roles), agree a shaping, publish a real Sigma **data model as code**. Emits **no warehouse SQL** — verified identical on Snowflake and Databricks. |
 | **sigma-synthetic-star-model** | **No data at all.** Fabricate a domain dataset from a pasted DDL or schema file — one SQL statement per table — and publish it as a star schema: a fact plus dimensions wired by real `relationships`. Deterministic (no RNG), shaped (trend, seasonality, category effects), labelled SYNTHETIC in six places, and verified by actually joining it. Works on Snowflake and Databricks from one spec. |
 | **sigma-input-table-app** | Interactive data apps: input tables, buttons, action sequences, modals — scenario modelers, forecasting, planning, write-back, submit→approve. |
@@ -124,6 +130,55 @@ day→date conversion); everything else is portable arithmetic.
 columns, model name, model description, column descriptions, and a workbook
 banner — because this repo has already been burned by fabricated data that looked
 real.
+
+---
+
+## The artifact path — when they have a dashboard and a transcript
+
+Optional, and it goes *before* everything else. Instead of interviewing the user,
+read what they already have: screenshots or a PDF of the dashboard they use today,
+plus the call transcript or notes describing the process around it.
+
+```mermaid
+flowchart LR
+    A[("artifacts/<br/><i>png · pdf · txt · vtt</i>")]
+    T["intake-artifacts.py<br/><i>triage · readability · signal lines</i>"]
+    R["read each one<br/><i>form from images<br/>function from transcripts</i>"]
+    B["brief.json<br/><i>every field provenanced</i>"]
+    G{{"HUMAN confirms<br/>the readout"}}
+    W["sigma-company-dashboard<br/><i>builds from the brief</i>"]
+    A --> T --> R --> B --> G --> W
+
+    style G fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px
+    style B fill:#e6fcf5,stroke:#0ca678,stroke-width:2px
+```
+
+**Screenshots decide FORM, transcripts decide FUNCTION**, and neither decides the
+other. A screenshot reliably gives layout, tile counts, chart kinds, palette and
+their vocabulary; it never gives a metric definition, the grain, or a data source.
+A transcript gives the process, the personas, the cadence and the metric semantics;
+it never gives a layout. Where they conflict, the transcript wins on meaning and
+the screenshot wins on placement.
+
+Every field in the brief carries an `origin` — `observed` (in an image, with a
+region) · `stated` (in a transcript, with a line) · `asked` · `inferred` or
+`default` (both of which require explicit confirmation). `validate-brief.py` runs
+fifteen checks over that, and the sharp ones exist because the failure mode here is
+a brief that reads as authoritative and is quietly half invented:
+
+| Check | Why |
+|---|---|
+| `no-number-from-image` | A figure on a tile is the client's real operating number *and* an OCR guess through a downscaler. Reproduce the shape; generate the values. |
+| `no-definition-from-image` | A tile label is a metric **name**. "Attainment" has three definitions per industry. |
+| `source-locator-present` | An `observed` claim citing a transcript (or vice versa) means the form/function split broke and the claim is probably invented. |
+| `pii-resolved` | A detail tile carries customer names; a transcript carries emails and phone numbers. |
+| `human-confirmed` | Artifacts don't replace the gate. A readout goes in front of a person, who corrects it. |
+
+Two inferences that look obvious and are wrong: a screenshot of a working dashboard
+is **not** data access (a recreate-this ask with no connection is the *synthetic*
+path), and a full-page screenshot is the **worst** input shape — anything over
+1568px on the long edge is downscaled before the model sees it, so the blur lands
+exactly on the card values. Ask for section crops at 100% zoom.
 
 ---
 
@@ -252,10 +307,13 @@ customdemo/
 ├── .claude-plugin/
 │   ├── plugin.json          # manifest (skills auto-discovered from skills/)
 │   └── marketplace.json     # makes the repo self-installable via /plugin
-├── skills/                  # 11 skills, one folder each with SKILL.md
+├── skills/                  # 12 skills, one folder each with SKILL.md
 ├── plugins/                 # 10 plugin examples; _scaffold/ is the clone target
+├── artifacts/               # client screenshots + transcripts (gitignored)
 ├── scripts/
 │   ├── api/                 # 12 auth-bootstrapped REST + MCP wrappers
+│   ├── intake-artifacts.py  # triage screenshots + transcripts → brief skeleton
+│   ├── validate-brief.py    # provenance gate on brief.json (15 checks)
 │   ├── profile-table.py     # profile a client table → candidate roles
 │   ├── sigma-resolve.py     # messy input → resolved Sigma IDs
 │   ├── validate-spec.py     # pre-POST workbook validator
@@ -284,6 +342,7 @@ copy via `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
 |---|---|
 | `skills/sigma-company-dashboard/examples/build_company_command_center.py` | **THE canonical generator — clone this one.** Tabbed command-center layout, comparative KPI cards, read-vs-writeback connection split. |
 | `skills/sigma-byod-data-model/examples/build_byod_data_model.py` | Profile + role flags → a publishable data-model spec. |
+| `skills/sigma-discovery-brief/examples/brief.example.json` | A gate-clean brief built from a real transcript — the shape to copy when reading artifacts. |
 | `plugins/_scaffold/` | **THE plugin clone target.** Settings JSON, theming, resize, and a real-SDK test suite. |
 | `skills/sigma-company-dashboard/reference/layouts.md` | Six-layout catalog + the decision table for choosing one. |
 | `skills/sigma-company-dashboard/examples/build_cava.py` | Kept for reference; predates several current conventions — **not** the clone target. |

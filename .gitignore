@@ -7,6 +7,10 @@
 # Upstream skill mirror (cloned on demand by scripts/refresh-vendor.sh)
 vendor/
 
+# Client discovery artifacts — screenshots, PDFs, call transcripts.
+# Their property; PII-bearing. The derived brief.json is committable, these are not.
+artifacts/
+
 # OS / editor junk
 .DS_Store
 *.swp

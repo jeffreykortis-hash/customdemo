@@ -1,0 +1,121 @@
+EXAMPLE / SYNTHETIC TRANSCRIPT — fabricated for this repo. "Acme Freight" is not a
+real company, no real person said any of this, and every number below is made up.
+It exists so intake-artifacts.py has something to triage and so brief.example.json
+has real line numbers to cite. Do not treat anything here as a customer fact.
+
+Acme Freight — discovery call — 38 min
+Attendees: Dana Ruiz (VP Transportation Ops, Acme), Priya Nadar (Pricing Analyst, Acme),
+J. Kortis (Sigma)
+
+[00:00:41] J. Kortis: Thanks for making time. Maybe start with what you look at on a
+normal Monday and I'll shut up and listen.
+
+[00:01:05] Dana Ruiz: Monday morning is the lane review. Nine a.m., me plus the four
+regional managers. We pull up the Tableau dashboard our BI team built, and honestly the
+first ten minutes are everyone arguing about whether the numbers are right.
+
+[00:01:38] J. Kortis: What's on it?
+
+[00:01:44] Dana Ruiz: Top row is four tiles. On-time delivery, cost per mile, average
+dwell hours, and claims rate. Then there's a trend chart underneath, and a big table of
+lanes at the bottom that nobody can read on the projector.
+
+[00:02:20] Dana Ruiz: There's also this grid thing our BI guy built, hours across the
+top and lanes down the side, colored by how backed up we are. That's the only part the
+regionals actually like. It's the first thing they look at.
+
+[00:03:02] J. Kortis: Say more about on-time — how is it calculated?
+
+[00:03:09] Dana Ruiz: A delivery is on time if it arrives inside the appointment
+window. If the customer gave us a two-hour window and we hit it, on time. Anything
+outside, late. We measure it against the prior month, because the seasonality kills you
+year over year.
+
+[00:03:55] Priya Nadar: The part people fight about is whether a reschedule counts as
+late. Today it doesn't, and I think that's wrong, but that's the current definition.
+
+[00:04:30] J. Kortis: And cost per mile?
+
+[00:04:35] Priya Nadar: Total linehaul plus accessorials divided by loaded miles. We
+compare that one to plan, not to last month. Plan gets set quarterly.
+
+[00:05:12] Dana Ruiz: Dwell is average hours between arrival at the facility and
+departure. Prior month again. Claims rate is claims filed over total shipments, and
+that one we do look at year over year because it's a small number.
+
+[00:06:03] J. Kortis: Any target on dwell?
+
+[00:06:08] Dana Ruiz: Under four hours is the goal. Over six and it's a red flag we
+have to explain.
+
+[00:07:40] J. Kortis: So Monday you're all looking at this together. What happens after?
+
+[00:08:15] Priya Nadar: This is the part that takes me forever. After the lane review I
+export the lane summary to Excel and reforecast the rates for the lanes that are off
+plan. I type in a new rate per lane, the sheet recalculates margin, and I send it to
+Dana for sign-off. Then it goes to the controller and eventually somebody keys it back
+into the TMS.
+
+[00:09:02] Priya Nadar: Every week. It's four, maybe five hours, and it's the same four
+hours every week.
+
+[00:09:30] J. Kortis: How many lanes are we talking about?
+
+[00:09:36] Priya Nadar: About twelve hundred active, but the ones I actually touch are
+the ones off plan by more than fifteen percent. That's usually forty or fifty lanes.
+
+[00:10:15] Dana Ruiz: And that's the thing — I want to see the ones that are off
+without having to scroll a table of twelve hundred rows.
+
+[00:11:48] J. Kortis: Does anyone else use it?
+
+[00:12:31] Dana Ruiz: The board sees a version of it monthly, but that's one slide, it's
+not this. NRR-style stuff, not operations. And the regionals get it Monday. That's it —
+the reps don't see any of this, they're in the TMS all day.
+
+[00:14:02] Priya Nadar: I'd add that the data is a week stale by the time we look at it.
+The Tableau extract refreshes Sunday night off a copy of the warehouse, and nobody
+trusts the copy. That's most of the ten minutes of arguing.
+
+[00:15:20] J. Kortis: Where does the data live?
+
+[00:15:26] Dana Ruiz: Snowflake, but that's the BI team's, and honestly getting you a
+connection is a six-week security review. I can't hand you a table for a demo. If you
+want to show us something you'll have to make the data up.
+
+[00:16:04] Priya Nadar: We can send you screenshots of the current dashboard though.
+And I can send our lane schema, it's just a fact table and a few dimensions.
+
+[00:18:45] J. Kortis: What would make this obviously better on Monday?
+
+[00:19:10] Dana Ruiz: If the grid thing was the centerpiece instead of an afterthought,
+and if I could see at a glance which lanes are off plan and click straight into them.
+And if Priya's reforecast happened in the same place instead of in a spreadsheet.
+
+[00:21:33] Priya Nadar: Honestly if I could type the new rate right into the thing and
+have it save, that alone is my whole Monday back.
+
+[00:24:50] J. Kortis: Who owns the definition of on-time today?
+
+[00:24:58] Dana Ruiz: That is a great question and I don't have a good answer.
+
+[00:28:14] Dana Ruiz: One more thing — our regionals are Midwest, Southeast, West and
+Northeast, so any breakdown should be by those four. And we think in lanes, not routes.
+Nobody here says route.
+
+[00:31:02] Priya Nadar: The carrier tiers matter too — we have Contract, Spot and
+Dedicated, and the cost story is completely different across the three.
+
+[00:33:40] J. Kortis: Last thing, anything I should avoid?
+
+[00:33:47] Dana Ruiz: Don't make it look like Tableau. Everyone here is tired of
+Tableau. And don't show me a page I have to scroll on the projector.
+
+[00:35:10] Priya Nadar: I'll send the screenshots this afternoon. My email is
+priya.nadar@example.invalid, and Dana's is dana.ruiz@example.invalid. My cell is
+415-555-0142 if the files bounce.
+
+[00:36:22] Dana Ruiz: And loop in our BI lead, Marcus Webb — he built the current one
+and he'll want to know what's happening.
+
+[00:37:50] J. Kortis: Perfect. I'll come back with a mock next week.

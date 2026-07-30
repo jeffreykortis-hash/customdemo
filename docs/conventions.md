@@ -14,6 +14,7 @@ conventions, see `.claude/skills/sigma-workbook-conventions/`.
 | `workbooks/_template/` | rarely | Skeleton copied for new dashboards. Keep generic. |
 | `prompts/library/` | yes | Reusable prompt fragments. Markdown only. |
 | `scripts/` | yes | Shell helpers. Keep thin — defer logic to skills. |
+| `artifacts/` | yes | **Client discovery artifacts** — screenshots, PDFs, call transcripts fed to `sigma-discovery-brief`. Gitignored, never committed. |
 | `docs/` | yes | This folder. Keep concise. |
 
 ## Secrets
@@ -22,6 +23,21 @@ conventions, see `.claude/skills/sigma-workbook-conventions/`.
 - Source via `eval "$(scripts/load-env.sh)"`. The script never echoes values.
 - Token retrieval is delegated to the upstream `sigma-api` skill.
 - Never paste a token into a prompt, comment, file, or commit message.
+
+## Client artifacts
+
+Screenshots and call transcripts are the client's property, and a dashboard
+screenshot routinely carries customer names in a detail tile.
+
+- Keep them in `artifacts/` (gitignored). Never commit one, and never quote one in
+  a commit message.
+- They do not go into a spec, a `CallText` prompt (a real LLM call from *their*
+  warehouse), or a workbook surface — including verbatim quotes from the call.
+- `scripts/intake-artifacts.py` flags PII-shaped strings; `scripts/validate-brief.py`
+  refuses to pass a brief with an unresolved flag.
+- The **brief** (`brief.json`) is committable and should be, next to the generator —
+  it's the record of why the build looks the way it does. Strip any quote or
+  identifier you wouldn't put in a PR.
 
 ## Git hygiene
 
