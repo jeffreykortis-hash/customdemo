@@ -13,6 +13,10 @@
 #   scripts/api/publish-datamodel.sh get-spec <dataModelId>
 #   scripts/api/publish-datamodel.sh verify   <dataModelId> <elementId>
 #
+# post/put also run scripts/verify-star.py when the spec contains relationships:
+# element inventory, relationship round-trip, and the join numbers that catch a
+# duplicate dimension key silently multiplying every measure.
+#
 # post/put run scripts/validate-datamodel-spec.py first and abort on any issue,
 # exactly as publish-workbook.sh runs validate-spec.py.
 #
@@ -69,6 +73,21 @@ for page in spec.get("pages", []) or []:
   return $rc
 }
 
+# A star schema needs more than per-element checks: a dimension with duplicate
+# primary keys fans out the fact and multiplies every measure, with no error
+# anywhere. Only runs when the spec actually has relationships.
+verify_star_if_any() {
+  local dm_id="$1" spec="$2"
+  python3 - "$spec" <<'PYEOF' || return 0
+import json, sys
+spec = json.load(open(sys.argv[1]))
+has = any(e.get("relationships")
+          for p in spec.get("pages", []) for e in p.get("elements", []))
+sys.exit(0 if has else 1)
+PYEOF
+  python3 "$_repo_root/scripts/verify-star.py" "$dm_id" "$spec"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   post)
@@ -88,6 +107,7 @@ try: print(json.load(sys.stdin).get("dataModelId","") or "")
 except Exception: print("")')"
     if [ -n "$dm_id" ] && [ -z "${SKIP_DM_VERIFY:-}" ]; then
       verify_spec_elements "$dm_id" "$spec"
+      verify_star_if_any "$dm_id" "$spec"
     fi
     ;;
   put)
@@ -105,6 +125,7 @@ except Exception: print("")')"
     printf '\n'
     if [ -z "${SKIP_DM_VERIFY:-}" ]; then
       verify_spec_elements "$dm_id" "$spec"
+      verify_star_if_any "$dm_id" "$spec"
     fi
     ;;
   get-spec)
