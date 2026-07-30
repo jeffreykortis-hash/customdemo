@@ -50,6 +50,17 @@
   // through silently yields no data, so the plugin sits on its synthetic
   // fallback forever. Normalize both shapes.
   function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
+  // subscribe() does NOT replay the current config — verified in Sigma: a
+  // preconfigured workbook produced zero config events until get() was called.
+  // Shim it once so every existing subscribe() call also sees the current value.
+  if (client && client.config && client.config.get) {
+    var _origSub = client.config.subscribe.bind(client.config);
+    client.config.subscribe = function (fn) {
+      var un = _origSub(fn);
+      try { var i = client.config.get(); if (i) fn(i); } catch (e) {}
+      return un;
+    };
+  }
   var NS='http://www.w3.org/2000/svg', TAU=Math.PI*2, tip=document.getElementById('tip');
   // daypart bands + colors (DoorDash warm palette)
   var BANDS=[
@@ -63,8 +74,8 @@
   var HC={}; BANDS.forEach(function(b){b.hrs.forEach(function(h){HC[h]=b;});});
   var defs=[
     {name:'source',type:'element'},
-    {name:'hour',type:'column',source:'source',allowedTypes:['number','integer'],label:'Hour of day (0-23)'},
-    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Orders'}
+    {name:'hour',type:'column',allowMultiple:false,source:'source',allowedTypes:['number','integer'],label:'Hour of day (0-23)'},
+    {name:'value',type:'column',allowMultiple:false,source:'source',allowedTypes:['number','integer'],label:'Orders'}
   ];
   if(client) client.config.configureEditorPanel(defs);
   function fmt(n){ if(n>=1e9)return (n/1e9).toFixed(1)+'B'; if(n>=1e6)return (n/1e6).toFixed(1)+'M'; if(n>=1e3)return (n/1e3).toFixed(0)+'K'; return ''+Math.round(n); }

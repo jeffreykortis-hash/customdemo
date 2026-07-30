@@ -52,9 +52,9 @@
   var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   var defs=[
     {name:'source',type:'element'},
-    {name:'day',type:'column',source:'source',label:'Day of week'},
-    {name:'hour',type:'column',source:'source',allowedTypes:['number','integer'],label:'Hour (0-23)'},
-    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Revenue'},
+    {name:'day',type:'column',source:'source',allowMultiple:false,label:'Day of week'},
+    {name:'hour',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Hour (0-23)'},
+    {name:'value',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Revenue'},
     // How to combine multiple rows landing in the same (day, hour) cell.
     {name:'aggregate',type:'dropdown',values:['Sum','Average','Max','Min'],defaultValue:'Sum',label:'Aggregate per cell'}
   ];
@@ -123,10 +123,20 @@
       if(any){ draw(m); return; } }
     draw(synth());
   }
-  if(client){ client.config.subscribe(function(cfg){ st.cfg=cfg||{};
-    if(st.unsub){st.unsub();st.unsub=null;}
-    if(cfg&&cfg.source){ st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(dd){ st.data=dd; recompute(); }); }
-    recompute(); });
+  function applyCfg(cfg){
+    st.cfg=cfg||{}; st.gotCfg=true;
+    if(st.unsub){ try{ st.unsub(); }catch(e){} st.unsub=null; }
+    if(cfg&&cfg.source){
+      st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(dd){
+        st.data=dd; recompute(); });
+    }
+    recompute();
+  }
+  if(client){
+    client.config.subscribe(applyCfg);
+    // Also read the CURRENT config synchronously at startup. subscribe() alone
+    // left this plugin with dataEvents=0 on a preconfigured workbook.
+    try { var _i=client.config.get(); if(_i) applyCfg(_i); } catch(e){}
   } else { recompute(); }
 })();
 </script>
