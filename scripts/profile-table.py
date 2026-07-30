@@ -40,6 +40,7 @@ import argparse
 import datetime as _dt
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -94,8 +95,18 @@ def friendly(raw: str) -> str:
     Verified: PRODUCT_TYPE -> 'Product Type', SKU_NUMBER -> 'Sku Number',
     store_key -> 'Store Key'. This is the name that goes on the RIGHT of the
     slash in a passthrough formula: [<table>/<friendly>].
+
+    Sigma also splits at LETTER<->DIGIT boundaries, so a mixed alphanumeric
+    token becomes two words:
+        primary_diagnosis_icd10 -> 'Primary Diagnosis Icd 10'
+        readmission_within_30d  -> 'Readmission Within 30 D'
+    Verified live 2026-07-30 on a Databricks table. This used to leave a mixed
+    token alone ('icd10'), which emitted a name that does NOT resolve — the
+    data-model POST then failed with `dependency not found: formula reference`.
     """
-    return " ".join(w.capitalize() if w.isalpha() else w for w in raw.split("_"))
+    return " ".join(p.capitalize()
+                    for word in raw.split("_")
+                    for p in re.findall(r"[A-Za-z]+|\d+", word))
 
 
 def is_id_shaped(name: str) -> bool:

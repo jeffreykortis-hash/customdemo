@@ -252,8 +252,13 @@ def wrap_round_py(v: float, col: dict):
 
 def friendly(raw: str) -> str:
     """Warehouse column name -> Sigma's derived display name. Matches
-    profile-table.py and build_byod_data_model.py exactly."""
-    return " ".join(w.capitalize() if w.isalpha() else w for w in raw.split("_"))
+    profile-table.py and build_byod_data_model.py exactly.
+
+    Splits on `_` AND at letter<->digit boundaries:
+    `q1_revenue` -> 'Q 1 Revenue', `icd10` -> 'Icd 10'."""
+    return " ".join(p.capitalize()
+                    for word in raw.split("_")
+                    for p in re.findall(r"[A-Za-z]+|\d+", word))
 
 
 def load_spec(path: str) -> dict:

@@ -55,10 +55,31 @@ to point at?*
 
 - **Sample data** (the default for a POV/demo) → continue with move 1 below.
 - **Their own table** ("use our data", "point it at `<DB>.<SCHEMA>.<TABLE>`") →
-  use **`sigma-byod-data-model`** FIRST. It profiles the table, agrees a shaping,
-  and publishes a real data model. Then move 1 is replaced by "source the model":
+  **ASK THEM FOR THE DATASET DETAILS, then** use **`sigma-byod-data-model`**.
+  It profiles the table, agrees a shaping, and publishes a real data model. Then
+  move 1 is replaced by "source the model":
   `source:{kind:"data-model", dataModelId, elementId}`, with columns as
   `[<ElementName>/<Column Name>]`. Moves 2–4 are unchanged.
+
+  **⚠ Do NOT go hunting for a plausible table yourself.** When someone says "I
+  have a dataset," the next message is a QUESTION, not a `search` sweep. Searching
+  the workspace for healthcare/retail/finance-looking tables and proposing the
+  best match wastes a turn and reads as ignoring them — it happened, and the user
+  cut in with "no, prompt me for my dataset." Ask for, at minimum:
+  - the **connection** (name is fine — resolve it via `list-connections.sh`), and
+  - the fully-qualified **`<CATALOG/DB>.<SCHEMA>.<TABLE>`**.
+
+  A Databricks user will often paste an HTTP path instead —
+  `/sql/1.0/warehouses/<id>/<catalog>/<schema>` — which names the catalog and
+  schema but no table, and the warehouse id does NOT appear in `GET /v2/connections`
+  (no `httpPath` field), so you cannot match it directly. Resolve it by probing
+  each connection of that dialect with
+  `scripts/api/lookup-path.sh <conn> <catalog> <schema>` and keeping the hit; then
+  enumerate tables with `scripts/api/probe-schema-tables.sh`. **Try obvious
+  spelling variants** — a pasted path is often typed by hand
+  (`healtcare_analytics` vs the real `healthcare_analytics`); probe both rather
+  than reporting "not found." Confirm the resolved path back to them before
+  profiling.
 - **No data at all** ("make up the data", "generate synthetic <industry> data",
   "we don't have a table yet", "here's our schema, mock it up", "build a star
   schema") → use **`sigma-synthetic-star-model`** FIRST. It fabricates one SQL

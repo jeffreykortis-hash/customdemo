@@ -21,7 +21,7 @@ Bisect by element index; compare the offending element to a GET-back exemplar.
 - **region-map:** `{kind:"region-map", source:{elementId,kind:"table"}, columns:[{id,formula},...], region:{id:<stateColId>, regionType:"us-state"}, color:{by:"scale", column:<metricColId>}}`.
 - **pivot-table:** `rowsBy:[{id}]`, `columnsBy:[{id}]`, `values:["<colId>"]` (exact — objects-as-values rejected).
 - **container:** `{kind:"container", style?, backgroundImage?}`. Its children are placed INSIDE its `<GridContainer>` in the layout XML.
-- **image:** `{kind:"image", url:"<https or data-URI>", style:{fit:"cover"|"scale-down"}}`.
+- **image:** `{kind:"image", source:{kind:"url", url:"<https or data-URI>"}, style:{fit:"cover"|"scale-down"}}` — the bare `url` form is stale, see the SCHEMA DRIFT section.
 - **text:** `{kind:"text", body:"<markdown, supports {{formula}} incl CallText>", verticalAlign:"middle"}`.
 - **control:** `{kind:"control", controlId (workbook-unique), controlType:"list"|"date-range"|"text-area"|..., filters:[{source:{kind:"table",elementId},columnId}], source:{kind:"source",source:{...},columnId}}`.
 - **plugin (needs a registered pluginId):** `{kind:"plugin", pluginId, config:{source:{kind:"element",elementId}, <binding>:"<columnId>"}}`. VERIFIED: each column binding is a **BARE columnId string**, not an object — the `{kind:"column",columnId,source}` object form is REJECTED (masked as `Invalid kind:"plugin"`). Binding keys must match the plugin's `configureEditorPanel` variable names. Register a plugin from code via `POST /v2/plugins {name,description,url,type:"element"}` → returns `pluginId` (no admin UI needed). List with `GET /v2/plugins`. **⚠ A spec-authored plugin binding does not take effect until the source element is re-picked in the UI — see the dedicated section below.**
@@ -29,7 +29,7 @@ Bisect by element index; compare the offending element to a GET-back exemplar.
 ## style vocabulary (rounds-trips on containers/kpi/chart/image)
 `backgroundColor` (hex or `{kind:"theme",ref:"colors-..."}`), `borderColor`,
 `borderWidth` (0/1/3), `borderRadius` (`"pill"|"round"|"square"`), `padding` (only
-`"none"`), `backgroundImage` (top-level, `{url, style:{fit}}`), `fit`, `color`,
+`"none"`), `backgroundImage` (top-level, `{source:{kind:"url",url}, style:{fit}}`), `fit`, `color`,
 `strokeStyle`, `textWrap`, `align`, `bold`, `fontSize`/`fontWeight` (on kpi/chart `name`).
 
 ## Column format (POSTS FINE — the "format is rejected" doc is stale)
@@ -57,8 +57,12 @@ element sourcing works** (a chart on page A can source a table on page B).
   `yAxis.format.scale = {type:"linear", zero:false, hideZeroLine:true}`. Give each
   KPI card its OWN trend formula (don't reuse revenue for all).
 - `verticalAlign` on text: only `"middle"` (top/bottom → masked Invalid kind).
-- **UI-only (NOT spec-able), even after enabling in the UI:** `chat` element and
-  `tabbed-container` — the API rejects both. Use a styled placeholder + pages-as-tabs.
+- **~~UI-only (NOT spec-able)~~ — STALE, corrected 2026-07-30: `chat` and
+  `tabbed-container` BOTH post fine from spec.** A two-page workbook with two
+  `tabbed-container`s (3 tabs each) and two `chat` elements bound to spec-declared
+  `agents` was created and round-tripped with tab order and agent bindings intact.
+  Use the real elements — do not fall back to a styled placeholder or pages-as-tabs.
+  See the tabbed-container shape below, and mind the never-nest-a-GridContainer rule.
 - Composite KPI card = a gradient `container` (backgroundImage) holding: a white
   SVG title image, "Current/Prior" white SVG label images, two transparent
   `kpi-chart`s (`value.color:"#fff"`, `style.backgroundColor:"transparent"`), and a
@@ -167,12 +171,17 @@ the rule at the top of this file, means a FIELD is wrong, not the kind. Only
 `kind:"url"` is accepted inside `source`; `static`/`link`/`image`/`manual` are
 all rejected outright.
 
-**`backgroundImage` additionally 500s server-side** even with the correct shape —
-deterministic across retries, on both data-URI and https urls. So the gradient
-header and gradient KPI cards cannot currently be built via the API at all.
-`build_company_command_center.py` now normalizes image shapes automatically and
-falls back to a flat `backgroundColor` when the background image is rejected,
-logging which path it took. Re-test with images once the endpoint is fixed.
+**UPDATE 2026-07-30 (later the same day): `backgroundImage` WORKS again** with the
+`{source:{kind:"url", url}}` shape — a two-page workbook with a gradient header and
+four gradient KPI cards POSTed and rendered on the first try (data-URI SVG
+gradients). The earlier server-side 500 appears to have been transient or
+already-fixed. Keep the flat-`backgroundColor` fallback in generators — it costs
+nothing and covers a regression — but **try backgrounds first and expect them to
+succeed**; don't ship flat cards assuming the endpoint is still broken.
+
+Note the wrapper is required on `backgroundImage` too, not just `image`: the old
+`{"url": …}` form fails as `backgroundImage.source: Invalid value: undefined`,
+which names the field directly rather than masking as `Invalid kind`.
 
 ## Sourcing a dashboard from a DATA MODEL (verified 2026-07-30)
 `build_company_command_center.py --data-model <dataModelId>:<elementId>` swaps the
@@ -313,3 +322,32 @@ plugin / detail-tables tabs) or a cohort-builder's Builder/Visualize split — s
   direction:"descending"}]}]` (grouping by every displayed dim at the SAME grain as
   the raw data, no real aggregation) is the only real lever for a default-sorted /
   "Top N" table from code.
+- **⚠ A `list` control with `mode:"include"` over a BOOLEAN column filters out EVERY
+  row.** Verified head-to-head on the same table: the identical control bound to a
+  *text* column returned 34,999 rows, bound to a *boolean* column returned **0**.
+  Omitting the `values` key entirely does the same thing. Nothing errors, nothing
+  appears in the GET-back — the page simply renders blank while an unfiltered twin
+  element still shows data, which is the only reason it's findable. It cost a full
+  debug cycle on a cohort page whose every KPI read 0 or empty. **Fix:** surface the
+  flag as text and point the control at that —
+  `{"id":"n-chf","formula":"If([Base/CHF], \"Yes\", \"No\")","name":"CHF"}` — which
+  also reads better in the UI than `true`/`false`.
+- **A join key in `source:{kind:"join"}` is a FORMULA evaluated in each side's OWN
+  scope**, so it is the bracketed DISPLAY NAME, not a column id:
+  `"columns":[{"left":"[Patient Id]","right":"[Patient Id]"}]`. Column ids
+  (`q-pid`), element-qualified refs (`[Patients Base/Patient Id]`) and bare names
+  all fail — the first two with `Column reference not found`, the third with
+  `Unparseable formula`, which is the tell that the value is parsed as a formula.
+  This is also why the canonical generator's cross-join uses the literal `"1"`: it's
+  a constant formula, not a magic column id.
+- **Every `<GridContainer elementId="X">` in the layout XML needs a matching
+  `container` ELEMENT in `pages[].elements`**, or the POST fails with
+  `Dependency not found: 'X'`. Easy to miss for pure layout wrappers that carry no
+  content of their own — a KPI row, a filter bar. The error names the container id,
+  so read it literally: it is a missing element, not a bad layout.
+- **`pivot-table` uses `rowsBy`/`columnsBy`/`values`** — `rows`/`columns2`/etc. are
+  the masked `Invalid kind: "pivot-table"`.
+- **Without an `Accept: application/json` header the spec endpoints answer in YAML**,
+  so a bare `json.load(urlopen(...))` on the response raises `JSONDecodeError` on a
+  perfectly successful call. `sigma_curl` in `scripts/api/_env.sh` sets it; hand-rolled
+  `urllib` clients in generators must set it too.

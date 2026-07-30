@@ -39,8 +39,8 @@ name is what goes on the right of the slash in a passthrough formula
 `[<ElementName>/<Friendly Name>]`. Getting it wrong is the most common way a
 BYOD model fails.
 
-The rule (verified): split on `_`, capitalize each alphabetic token, leave
-non-alphabetic tokens alone.
+The rule (verified): split on `_` **and at every letter↔digit boundary**, then
+capitalize each resulting piece.
 
 | Warehouse | Friendly | Formula |
 |---|---|---|
@@ -48,9 +48,26 @@ non-alphabetic tokens alone.
 | `SKU_NUMBER` | `Sku Number` | `[big_buys_pos/Sku Number]` |
 | `store_key` | `Store Key` | `[big_buys_pos/Store Key]` |
 | `CUST_KEY` | `Cust Key` | `[big_buys_pos/Cust Key]` |
+| `primary_diagnosis_icd10` | `Primary Diagnosis Icd 10` | `[encounters/Primary Diagnosis Icd 10]` |
+| `readmission_within_30d` | `Readmission Within 30 D` | `[encounters/Readmission Within 30 D]` |
 
 Note `SKU` → `Sku` and `CUST` → `Cust`: it is a plain capitalize, not an
 acronym-aware transform. Don't "fix" it to `SKU`.
+
+**⚠ The letter↔digit split is easy to get wrong and this repo got it wrong until
+2026-07-30** — the old rule left a mixed alphanumeric token alone (`icd10`,
+`30d`), which produced a name that does not resolve, and the data-model POST
+failed with `dependency not found: formula reference 'encounters/…'`. Any column
+mixing letters and digits in one token is affected: `icd10`, `30d`, `q1`, `y2024`,
+`top10`.
+
+**Fastest way to settle a name empirically:** `POST /v2/dataModels/spec` reports
+**every** unresolved reference in a single 400 response. So put a dozen candidate
+spellings in one throwaway spec as separate columns and read off which ones it
+does *not* complain about — those are the real names. Nothing is created when the
+POST fails, so this costs one call and leaves no artifact. The lookup is
+case-insensitive and treats `_` as a space, so candidates differing only in case
+or underscores collapse into one reported error.
 
 The **left** side of the slash is the element's `name`, which is whatever you set
 it to — the generator defaults it to the table name (`big_buys_pos`), so the
