@@ -4,7 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Performance Rings — Apple Sigma Plugin</title>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -46,7 +53,7 @@
 </div>
 <script>
 (function(){
-  var client=(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
   var C=[78,58,38].map(function(r){return 2*Math.PI*r;}); // circumferences
   var defs=[
     {name:'source',type:'element'},

@@ -53,3 +53,34 @@ python3 ../scripts/register_plugin.py "$SIGMA_BASE_URL" "$SIGMA_API_TOKEN" \
 With no Sigma client present it renders synthetic rows, so you can iterate on the
 visual before wiring it to a workbook. Always finish by checking it **inside** a
 workbook at two different widths — the standalone preview can't catch a sizing bug.
+
+## Regression test
+
+```bash
+npm i jsdom@29.1.1
+curl -sL https://unpkg.com/react@18.3.1/umd/react.production.min.js > plugins/_scaffold/.react.js
+curl -sL https://unpkg.com/@sigmacomputing/plugin@1.2.0            > plugins/_scaffold/.sdk.js
+node plugins/_scaffold/test.js          # 24 assertions
+```
+
+It loads the **real** React + SDK bundles and drives startup the way the Sigma
+host does. That matters more than it sounds: an earlier mock-based suite passed
+25/25 while this plugin was completely broken in Sigma, five separate times —
+because the mock injected `client` directly, hand-called the config callback, and
+stubbed a `getElementData()` method that **does not exist in the SDK**. It
+validated assumptions instead of behaviour.
+
+So the stub here is a `Proxy` over the *genuine* client's key set that throws on
+any property the real SDK lacks, and it asserts argument shapes (the element id
+must be a **string**, not the `{kind, elementId}` config object). A stub must
+never be more permissive than the thing it replaces.
+
+The suite reproduces each historical failure if you revert the fix:
+
+| Bug | Symptom in Sigma |
+|---|---|
+| Wrong SDK global (`SigmaPluginClient`) | silently renders synthetic data |
+| Missing React peer dep | `window.SigmaPlugin` is an empty object, same silent fallback |
+| `subscribe()` without `config.get()` | stuck on "select a source" on an already-configured workbook |
+| Invented `getElementData()` | stuck on "Loading…" forever (throws synchronously, never reaches `.catch`) |
+| Fatal message repainted by ResizeObserver | the real error is replaced by a benign placeholder |

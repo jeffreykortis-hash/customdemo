@@ -24,7 +24,14 @@
   decision from settings. That asymmetry is the reason the JSON settings pattern
   exists.
 -->
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   :root {
     --bg:#ffffff; --fg:#191919; --muted:#8A8F94; --accent:#0046BE;
@@ -34,7 +41,7 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
               font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   #root { height:100%; padding:var(--pad); display:flex; flex-direction:column; }
-  #msg  { margin:auto; color:var(--muted); font-size:calc(13px * var(--fs)); text-align:center; }
+  #msg  { margin:auto; color:var(--muted); font-size:calc(13px * var(--fs)); text-align:center; white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; max-height:100%; overflow:auto; }
   /* --- VIZ: your marks go here --- */
   #viz  { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
   .val  { font-size:calc(34px * var(--fs)); font-weight:800; letter-spacing:-0.02em; }
@@ -76,8 +83,22 @@
 <script>
 (function () {
   "use strict";
-  var client = (window.SigmaPluginClient && window.SigmaPluginClient.client) ||
-               (window.Sigma && window.Sigma.client) || window.client || null;
+  var BUILD = "1.0";  // shown in the fatal message; bump when debugging a stale cache
+  // Resolve the SDK client across UMD global renames.
+  //   @sigmacomputing/plugin >= 1.x  ->  window.SigmaPlugin.client
+  //   older builds                   ->  window.sigmaComputing.plugin.client
+  // Getting this wrong does NOT throw: the plugin loads, sizes itself and renders
+  // the synthetic fallback, so it looks fine while showing data that isn't yours.
+  // That is exactly how every plugin in this repo silently broke when the
+  // unversioned unpkg URL rolled forward to a build that renamed the global.
+  var client = (window.SigmaPlugin && window.SigmaPlugin.client) ||
+               (window.sigmaComputing && window.sigmaComputing.plugin &&
+                window.sigmaComputing.plugin.client) || null;
+
+  // If we're in an iframe we are almost certainly embedded in a workbook, so a
+  // missing client is a BUG, not standalone dev. Say so on screen instead of
+  // quietly rendering fake numbers.
+  var embedded = (function(){ try { return window.parent !== window; } catch(e){ return true; } })();
 
   // ==========================================================================
   // 1. BINDINGS — per-plugin. Keys here must match the workbook spec's
@@ -207,6 +228,10 @@
   // ==========================================================================
   function draw(state) {
     var s = state.settings, rows = state.rows;
+    // A fatal message must survive later repaints. Without this the
+    // ResizeObserver's draw() immediately overwrote the "SDK not found" error
+    // with the ordinary "select a source" placeholder, hiding the real cause.
+    if (state.fatal) return message(state.fatal);
     if (!state.hasSource)  return message('Select a source element in the editor panel.');
     if (!state.hasColumns) return message('Bind the Label and Value columns.');
     if (state.loading)     return message('Loading…');
@@ -237,6 +262,14 @@
     ]);
   }
 
+  // The elements API wants the element id as a STRING. Depending on how the
+  // config was authored, `source` arrives either as that bare id or as the
+  // spec-layer object {kind:"element", elementId}. Accept both.
+  function srcId(cfg) {
+    var s = cfg && cfg.source;
+    return (s && typeof s === 'object') ? (s.elementId || s.id) : s;
+  }
+
   function onConfig(cfg) {
     cfg = cfg || {};
     state.settings = loadSettings(cfg.config);
@@ -246,18 +279,28 @@
     document.getElementById('gear').hidden = !edit;
     if (!edit) document.getElementById('drawer').classList.remove('open');
 
+    // Always drop the previous subscription before making a new one.
+    if (state.unsub) { try { state.unsub(); } catch (e) {} state.unsub = null; }
+
     if (client && state.hasSource && state.hasColumns) {
-      // getElementData is async. Without this the element is BLANK between the
-      // config arriving and the data landing — only show it on a cold load so a
-      // refilter doesn't flicker.
+      // Data arrives asynchronously; without a loading state the element is
+      // BLANK in the gap. Only on a cold load, so a refilter doesn't flicker.
       if (!state.rows.length) { state.loading = true; repaint(); }
-      client.elements.getElementData(cfg.source).then(function (data) {
-        var L = data[cfg.label] || [], V = data[cfg.value] || [];
-        state.rows = L.map(function (l, i) { return { label:l, value:V[i] }; });
-        state.loading = false; repaint();
-      }).catch(function (e) {
-        console.warn(e); state.rows = []; state.loading = false; repaint();
-      });
+      try {
+        // The elements API is SUBSCRIPTION-based and takes the element id as a
+        // STRING. There is no getElementData() — assuming one existed left the
+        // plugin stuck on "Loading…" forever, because calling an undefined
+        // method throws synchronously and never reaches a .catch().
+        state.unsub = client.elements.subscribeToElementData(srcId(cfg), function (data) {
+          var L = (data && data[cfg.label]) || [], V = (data && data[cfg.value]) || [];
+          state.rows = L.map(function (l, i) { return { label: l, value: V[i] }; });
+          state.loading = false; repaint();
+        });
+      } catch (e) {
+        state.loading = false;
+        state.fatal = 'Failed to subscribe to element data:\n' + e.message + '\n[build ' + BUILD + ']';
+        repaint();
+      }
     } else { state.rows = []; state.loading = false; repaint(); }
   }
 
@@ -284,7 +327,15 @@
 
   if (client) {
     client.config.configureEditorPanel(buildEditorPanel(false));
+    // subscribe() fires on CHANGES only — it does not replay the current value.
+    // Without this get(), a plugin opened on an already-configured workbook sits
+    // on its "select a source" placeholder forever, because nothing ever changes.
     client.config.subscribe(onConfig);
+    try {
+      var initial = client.config.get();
+      if (initial) onConfig(initial);
+    } catch (e) { console.warn('plugin: config.get() failed', e); }
+    repaint();
     // The workbook only ever hands us a background colour — see the header note.
     if (client.style) {
       client.style.get().then(function (st) {
@@ -294,6 +345,16 @@
         state.workbookBg = st && st.backgroundColor; repaint();
       });
     }
+  } else if (embedded) {
+    // Embedded but no client: the SDK failed to load, or its global was renamed.
+    // Fail visibly — synthetic data here is worse than an error.
+    applyTheme(state.settings, null);
+    state.fatal = 'Plugin SDK not found (window.SigmaPlugin.client).\n' +
+      'The SDK UMD needs React on the page BEFORE it loads — without it its\n' +
+      'factory throws and SigmaPlugin is left an empty object.\n' +
+      'Check both <script> tags (react, then @sigmacomputing/plugin).\n' +
+      '[build ' + BUILD + ']';
+    message(state.fatal);
   } else {
     // Standalone preview so you can iterate at localhost without a workbook.
     state.hasSource = state.hasColumns = true;
