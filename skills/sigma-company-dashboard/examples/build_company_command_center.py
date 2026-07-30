@@ -29,22 +29,24 @@ KPI STANDARD (do not regress): each card kpi-chart has a value column AND a comp
 (comparisonColumn + comparison display delta); the metric title is the kpi NATIVE name, color white.
 Never bake KPI titles as SVG images.
 """
-import json,sys,os,base64,urllib.request,urllib.error,xml.dom.minidom as _MD
+import json,sys,os,base64,copy,urllib.request,urllib.error,xml.dom.minidom as _MD
 
 def _args():
     """Positional-compatible arg parsing. `prog BASE TOKEN CONN FOLDER` still works
     exactly as before; the flags are additive."""
     a=[x for x in sys.argv[1:]]; flags={}
-    for f in ("--write-connection","--ai"):
+    for f in ("--write-connection","--ai","--data-model"):
         if f in a: i=a.index(f); flags[f]=a[i+1]; del a[i:i+2]
     no_ai="--no-ai" in a
     if no_ai: a.remove("--no-ai")
     if len(a)<4:
         sys.stderr.write("usage: build_company_command_center.py <BASE> <TOKEN> <READ_CONN> <FOLDER>"
-                         " [--write-connection <id>] [--ai '<conn>,<model>'] [--no-ai]\n"); sys.exit(2)
-    return a[0],a[1],a[2],a[3],flags.get("--write-connection"),flags.get("--ai"),no_ai
+                         " [--write-connection <id>] [--ai '<conn>,<model>'] [--no-ai]"
+                         " [--data-model <dataModelId>:<elementId>]\n"); sys.exit(2)
+    return (a[0],a[1],a[2],a[3],flags.get("--write-connection"),flags.get("--ai"),
+            no_ai,flags.get("--data-model"))
 
-BASE,TOKEN,CONN,FOLDER,_WCONN,_AI,NO_AI=_args()
+BASE,TOKEN,CONN,FOLDER,_WCONN,_AI,NO_AI,_DM=_args()
 H={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"}
 
 def _conn_meta(cid):
@@ -148,6 +150,73 @@ def card(elid,src,title,v1f,v2f,v2lab,fmt,g,trend=None,rowband="5 / 13"):
     lay=(f'  <GridContainer elementId="{cid}" type="grid" gridColumn="{{col}}" gridRow="{rowband}" gridTemplateColumns="repeat(12, 1fr)" gridTemplateRows="repeat(12,1fr)">\n'+inner+'  </GridContainer>')
     return els,lay
 
+# ---------------------------------------------------------------------------
+# --data-model mode: source a published DATA MODEL instead of reshaping the
+# sample table. Used by BOTH sigma-byod-data-model (a client's real table) and
+# sigma-synthetic-star-model (a fabricated star).
+#
+# The whole layout below references NINE display names on the base table —
+# Date, Month, Period Name, Category, Subcategory, Region, Order, GOV, Revenue.
+# So this doesn't rewrite the dashboard: it MAPS the model's columns onto those
+# nine roles and keeps every downstream formula untouched.
+# ---------------------------------------------------------------------------
+def _model_element(dm_id, el_id):
+    """(elementName, [(colName, type)]) for a data-model element, via MCP describe."""
+    body={"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"describe",
+          "arguments":{"object":{"type":"datamodel-element","dataModelId":dm_id,
+                                 "elementId":el_id}}}}
+    r=urllib.request.Request(BASE+"/mcp/v2",data=json.dumps(body).encode(),
+        headers={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json",
+                 "Accept":"application/json, text/event-stream"})
+    raw=urllib.request.urlopen(r).read().decode()
+    import re as _re
+    m=_re.search(r"data:\s*(\{.+\})",raw,_re.DOTALL)
+    if not m: raise SystemExit("--data-model: could not describe "+dm_id+"/"+el_id)
+    env=json.loads(m.group(1))
+    if env.get("error"): raise SystemExit("--data-model: "+str(env["error"]))
+    ddl=""
+    for c in env["result"].get("content",[]):
+        if c.get("type")=="text":
+            try: ddl=json.loads(c["text"]).get("ddl","")
+            except Exception: ddl=c["text"]
+            break
+    name=_re.search(r'-- Name:\s*"([^"]+)"',ddl)
+    cols=[]
+    for cm in _re.finditer(r'^\s+"([^"]+)"\s+(\w+),?\s*--\s*"([^"]+)"',ddl,_re.M):
+        cols.append((cm.group(3),cm.group(2)))          # (display name, type)
+    return (name.group(1) if name else el_id), cols
+
+_ROLE_HINTS={"date":("date",),"month":("month",),"period":("period",)}
+def _map_roles(cols):
+    """Assign model columns to the nine roles the layout needs. Returns
+    (COLS, has_period). Anything unmapped is simply not exposed."""
+    by=lambda pred:[n for n,t in cols if pred(n.lower(),t)]
+    dates=by(lambda n,t:t in("date","datetime")and"month"not in n)
+    months=by(lambda n,t:t in("date","datetime")and"month"in n)
+    periods=by(lambda n,t:t=="text" and "period" in n)
+    nums=by(lambda n,t:t in("number","integer") and not any(
+        k in n for k in("key","id","count")))
+    ids=by(lambda n,t:"id" in n or "key" in n or "order" in n or "number" in n)
+    # Exclude id-shaped and marker columns: an ORDER_ID is text but is NOT a
+    # category, and picking it makes the filter control useless (5000 values).
+    texts=[n for n,t in cols if t=="text" and n not in periods and n not in ids
+           and not any(k in n.lower() for k in
+                       ("provenance","note","source kind","id","key","code","name"))]
+    if not texts:   # last resort rather than mapping nothing
+        texts=[n for n,t in cols if t=="text" and n not in periods and n not in ids]
+    out=[]
+    def add(cid,src,disp):
+        if src: out.append((cid,src,disp))
+    add("c-date",dates[0] if dates else None,"Date")
+    add("c-month",months[0] if months else None,"Month")
+    add("c-period",periods[0] if periods else None,"Period Name")
+    for cid,disp,i in (("c-cat","Category",0),("c-sub","Subcategory",1),("c-reg","Region",2)):
+        add(cid,texts[i] if len(texts)>i else (texts[0] if texts else None),disp)
+    add("c-order",ids[0] if ids else None,"Order")
+    add("c-gov",nums[0] if nums else None,"GOV")
+    add("c-rev",nums[1] if len(nums)>1 else (nums[0] if nums else None),"Revenue")
+    return out,bool(periods)
+
 # ============ PAGE 1 DATA (food-delivery reshape) ============
 MF="DoorDash"
 CATS=['Restaurants','Grocery','Convenience','Alcohol','Retail','DashMart']
@@ -174,8 +243,38 @@ FROM base"""
 COLS=[("c-date","DATE","Date"),("c-month","USE_MONTH","Month"),("c-period","PERIOD_NAME","Period Name"),
  ("c-cat","CATEGORY","Category"),("c-sub","SUBCATEGORY","Subcategory"),("c-reg","REGION","Region"),
  ("c-order","ORDER_NUMBER","Order"),("c-cons","CONSUMER","Consumer"),("c-gov","GOV","GOV"),("c-rev","REVENUE","Revenue")]
-tbl={"id":"tbl","kind":"table","source":{"connectionId":CONN,"statement":SQL,"kind":"sql"},
- "columns":[{"id":c,"formula":f"[Custom SQL/{s}]","name":d} for c,s,d in COLS],"name":MF,"order":[c[0] for c in COLS],"visibleAsSource":True}
+
+HAS_PERIOD=True
+if _DM:
+    # Source a published data model instead of reshaping the sample table. The
+    # nine display names above are the contract the rest of this file depends
+    # on, so we remap onto them and every downstream formula keeps working.
+    if ":" not in _DM:
+        sys.stderr.write("--data-model wants <dataModelId>:<elementId>\\n"); sys.exit(2)
+    _dm_id,_dm_el=_DM.split(":",1)
+    _EL_NAME,_MODEL_COLS=_model_element(_dm_id,_dm_el)
+    COLS,HAS_PERIOD=_map_roles(_MODEL_COLS)
+    _missing={d for _,_,d in COLS}
+    print(f"--data-model: {_EL_NAME} -> " +
+          ", ".join(f"{d}<-{s}" for _,s,d in COLS))
+    for _need in ("Date","Category","GOV"):
+        if _need not in _missing:
+            sys.stderr.write(f"--data-model: no column mapped to {_need!r}; the layout "
+                             "needs it. Add one to the model or edit COLS by hand.\\n")
+            sys.exit(2)
+    if not HAS_PERIOD:
+        # Comparative KPI cards need it. Both model-producing skills emit one;
+        # a hand-built model might not.
+        print("--data-model: WARNING no 'Period Name' column — KPI cards will show "
+              "totals with no prior-period comparison. Add a Period Name column to "
+              "the model (see sigma-byod-data-model / sigma-synthetic-star-model).")
+    tbl={"id":"tbl","kind":"table",
+         "source":{"kind":"data-model","dataModelId":_dm_id,"elementId":_dm_el},
+         "columns":[{"id":c,"formula":f"[{_EL_NAME}/{s}]","name":d} for c,s,d in COLS],
+         "name":MF,"order":[c[0] for c in COLS],"visibleAsSource":True}
+else:
+    tbl={"id":"tbl","kind":"table","source":{"connectionId":CONN,"statement":SQL,"kind":"sql"},
+     "columns":[{"id":c,"formula":f"[Custom SQL/{s}]","name":d} for c,s,d in COLS],"name":MF,"order":[c[0] for c in COLS],"visibleAsSource":True}
 # demand-clock source: synthetic 24-hour order profile
 PROFILE=[3,2,1,1,1,2,5,9,11,9,10,22,26,18,11,10,13,20,30,33,27,17,9,5]
 PROFARR="ARRAY_CONSTRUCT("+",".join(str(x) for x in PROFILE)+")"
@@ -186,7 +285,11 @@ demand={"id":"demand","kind":"table","name":"Hourly Demand","visibleAsSource":Tr
  "columns":[{"id":"dm-hour","formula":"[Custom SQL/HOUR]","name":"Hour"},{"id":"dm-orders","formula":"[Custom SQL/ORDERS]","name":"Orders","format":NUM}],
  "order":["dm-hour","dm-orders"]}
 
-_P='[{0}/Period Name]="§"'.format(MF)
+# The comparative predicate. Without a Period Name column it becomes a tautology,
+# so SumIf(...) degenerates to Sum(...) and both halves of each card show the
+# total — the cards still render, the delta just reads 0%. The warning above
+# says so rather than letting it look like a real "no change".
+_P=('[{0}/Period Name]="§"'.format(MF) if HAS_PERIOD else '1=1')
 KDEFS=[("gov","MARKETPLACE GOV",f'SumIf([{MF}/GOV],{_P})',CUR,f'Sum([{MF}/GOV])'),
        ("rev","TOTAL REVENUE",f'SumIf([{MF}/Revenue],{_P})',CUR,f'Sum([{MF}/Revenue])'),
        ("ord","TOTAL ORDERS",f'CountDistinct(If({_P},[{MF}/Order],Null))',NUM,f'CountDistinct([{MF}/Order])'),
@@ -406,6 +509,48 @@ def build(mode):
      "layout":'<?xml version="1.0" encoding="utf-8"?>\n'+p1l+p2l+modal_lay,"themeOverrides":theme}
     if wa: s["agents"]=[AG_COPILOT, ag_scenario(mode=="tool")]
     return s
+def _fix_images(o):
+    """Migrate `image` elements from {url} to {source:{kind:"url",url}}.
+
+    VERIFIED 2026-07-30: the workbook spec endpoint no longer accepts
+    {kind:"image", url:"..."} — it fails as the masked `Invalid kind: "image"`,
+    which per this repo's own cheatsheet means a FIELD is wrong, not the kind.
+    The current shape is {kind:"image", source:{kind:"url", url:"..."}}.
+
+    Applied as a normalizer rather than at each construction site, because the
+    logo, the title, the subtitle and every baked SVG label are all images.
+    """
+    if isinstance(o,dict):
+        if o.get("kind")=="image" and "url" in o and "source" not in o:
+            o["source"]={"kind":"url","url":o.pop("url")}
+        for v in o.values(): _fix_images(v)
+    elif isinstance(o,list):
+        for v in o: _fix_images(v)
+    return o
+
+def _strip_bg(o):
+    """Replace every backgroundImage with a flat backgroundColor.
+
+    VERIFIED 2026-07-30: `backgroundImage` is currently REJECTED by the workbook
+    spec endpoint on this instance. The old {url, style} shape now fails schema
+    validation ("backgroundImage.source: Invalid value: undefined"); the current
+    shape {source:{kind:"url",url}, style} passes validation and then 500s
+    server-side, deterministically, on both data-URI and https urls.
+
+    That breaks the gradient header AND the gradient KPI cards — i.e. this
+    generator could not POST at all, on ANY data path, until this fallback.
+    The visual degrades to flat brand colour; everything else is unchanged.
+    Retry with images once the endpoint is fixed.
+    """
+    if isinstance(o,dict):
+        bg=o.pop("backgroundImage",None)
+        if bg is not None:
+            o.setdefault("style",{}).setdefault("backgroundColor",DARK)
+        for v in o.values(): _strip_bg(v)
+    elif isinstance(o,list):
+        for v in o: _strip_bg(v)
+    return o
+
 def qa(s):
     def _walk(o):
         if isinstance(o,dict):
@@ -440,11 +585,31 @@ if not _WM.get("writeAccess", False):
 
 done=False
 for mode in ["tool","basic","none"]:
-    spec=build(mode)
-    if qa(spec): print("ABORT malformed SVG"); sys.exit(1)
+    for bg in ["images","flat"]:
+        spec=copy.deepcopy(build(mode))   # build() returns shared module-level
+                                          # objects; deep-copy so a "flat" retry
+                                          # can't silently strip a later attempt
+        _fix_images(spec)
+        if bg=="flat": _strip_bg(spec)
+        if qa(spec): print("ABORT malformed SVG"); sys.exit(1)
+        try:
+            ok,url,resp=post(spec)
+            print(f"POST (agent mode={mode}, background={bg}):",
+                  "ACCEPTED" if ok else resp[:200])
+            if ok:
+                if bg=="flat":
+                    print("  NOTE: posted WITHOUT background images — the endpoint "
+                          "currently rejects them, so gradients are flat colour.")
+                print("URL:",url); done=True; break
+        except urllib.error.HTTPError as e:
+            raw=e.read().decode()
+            try: msg=json.loads(raw).get("message","")
+            except Exception: msg=raw
+            print(f"  mode={mode} bg={bg} failed: {e.code} {msg[:160]}")
+    if done: break
+if False:
     try:
-        ok,url,resp=post(spec); print(f"POST (agent mode={mode}):","ACCEPTED" if ok else resp[:300])
-        if ok: print("URL:",url); done=True; break
+        pass
     except urllib.error.HTTPError as e:
         raw=e.read().decode()
         try: msg=json.loads(raw).get("message","")

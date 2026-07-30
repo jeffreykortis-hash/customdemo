@@ -92,6 +92,26 @@ def build(spec: dict, conn: str, folder: str, sql_by_table: dict,
         }
 
         if i == fact_i:
+            # Month + Period Name make the model consumable by the dashboard
+            # generator's comparative KPI cards without any further authoring.
+            # The period anchor is the spec's own max date, computed here — never
+            # Today(), which yields an EMPTY current period on a fixed window.
+            date_col = next((c for c in t["columns"]
+                             if c["generator"]["kind"] == "date"), None)
+            if date_col:
+                dn = S.friendly(date_col["name"])
+                mx = _max_date(spec, date_col)
+                cols.append({"id": pfx + "month", "name": "Month",
+                             "formula": f'DateTrunc("month", [{dn}])',
+                             "description": "SYNTHETIC: month truncation of " + dn})
+                cols.append({
+                    "id": pfx + "period", "name": "Period Name",
+                    "formula": (f'If([{dn}] > DateAdd("year", -1, Date("{mx}")), '
+                                f'"Current Period", If([{dn}] > DateAdd("year", -2, '
+                                f'Date("{mx}")), "Prior Year", Null))'),
+                    "description": (f"SYNTHETIC: rolling 12-month period tag anchored "
+                                    f"to the generated max date {mx}.")})
+                el["order"] = [c["id"] for c in cols]
             el["metrics"] = _fact_metrics(t, pfx)
             rels = []
             for j, dt in enumerate(tables):
@@ -129,6 +149,18 @@ def build(spec: dict, conn: str, folder: str, sql_by_table: dict,
         "schemaVersion": 1,
         "pages": [{"id": "page-1", "name": "Model", "elements": elements}],
     }
+
+
+def _max_date(spec: dict, date_col: dict) -> str:
+    """The last date the generator will actually emit: anchor + days - 1.
+
+    Known exactly because generation is deterministic, so the period tag needs
+    no warehouse query and can't drift from the data.
+    """
+    import datetime as _dt
+    anchor = _dt.date.fromisoformat(spec.get("anchorDate", "2024-01-01"))
+    days = int(date_col["generator"].get("days", 365))
+    return (anchor + _dt.timedelta(days=max(days - 1, 0))).isoformat()
 
 
 def _describe(c: dict) -> str:

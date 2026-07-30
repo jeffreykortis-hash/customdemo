@@ -152,6 +152,41 @@ same silent synthetic fallback):
 
 Reference implementation with all of this wired: `plugins/_scaffold/`.
 
+## ⚠ SCHEMA DRIFT: images moved from `url` to `source` (verified 2026-07-30)
+The canonical generator could not POST **at all**, on any data path, until this
+was found. Both shapes below are stale everywhere in this repo's captured
+`examples/*.json`, because the API changed after those were saved.
+
+| | was | now |
+|---|---|---|
+| `image` element | `{kind:"image", url:"…"}` | `{kind:"image", source:{kind:"url", url:"…"}, style}` |
+| `backgroundImage` | `{url:"…", style}` | `{source:{kind:"url", url:"…"}, style}` |
+
+The old image shape fails as the masked **`Invalid kind: "image"`** — which, per
+the rule at the top of this file, means a FIELD is wrong, not the kind. Only
+`kind:"url"` is accepted inside `source`; `static`/`link`/`image`/`manual` are
+all rejected outright.
+
+**`backgroundImage` additionally 500s server-side** even with the correct shape —
+deterministic across retries, on both data-URI and https urls. So the gradient
+header and gradient KPI cards cannot currently be built via the API at all.
+`build_company_command_center.py` now normalizes image shapes automatically and
+falls back to a flat `backgroundColor` when the background image is rejected,
+logging which path it took. Re-test with images once the endpoint is fixed.
+
+## Sourcing a dashboard from a DATA MODEL (verified 2026-07-30)
+`build_company_command_center.py --data-model <dataModelId>:<elementId>` swaps the
+base table from custom SQL to `source:{kind:"data-model", dataModelId, elementId}`
+and remaps the model's columns onto the NINE display names the layout depends on:
+`Date · Month · Period Name · Category · Subcategory · Region · Order · GOV ·
+Revenue`. Every downstream formula references those names, so nothing else in the
+generator changes. This is what makes the BYOD and synthetic paths turnkey rather
+than hand-authored.
+
+Both model-producing skills emit `Month` and `Period Name` so the comparative KPI
+cards work; without a `Period Name` the predicate degrades to a tautology and the
+cards show totals with a 0% delta (the generator warns).
+
 ## Multi-element star schemas + SQL-sourced data models (verified 2026-07-30)
 Probed live on papercranestaging, Snowflake AND Databricks. All green:
 
