@@ -19,3 +19,7 @@ __pycache__/
 
 # Local Netlify folder
 .netlify
+
+# Cached vendor bundles for plugins/_scaffold/test.js
+plugins/_scaffold/.react.js
+plugins/_scaffold/.sdk.js

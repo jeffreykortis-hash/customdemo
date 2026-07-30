@@ -4,7 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Pace-to-Target Pour — Budweiser Sigma Plugin</title>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -63,7 +70,24 @@
 </div>
 <script>
 (function(){
-  var client=(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
+  // subscribe() does NOT replay the current config — verified in Sigma: a
+  // preconfigured workbook produced zero config events until get() was called.
+  // Shim it once so every existing subscribe() call also sees the current value.
+  if (client && client.config && client.config.get) {
+    var _origSub = client.config.subscribe.bind(client.config);
+    client.config.subscribe = function (fn) {
+      var un = _origSub(fn);
+      try { var i = client.config.get(); if (i) fn(i); } catch (e) {}
+      return un;
+    };
+  }
   var cfgDefs=[
     {name:'source',type:'element'},
     {name:'value',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Current value'},
@@ -125,7 +149,7 @@
   if(client){
     client.config.subscribe(function(config){ st.cfg=config||{};
       if(st.unsub){st.unsub();st.unsub=null;}
-      if(config&&config.source){ st.unsub=client.elements.subscribeToElementData(config.source,function(d){st.data=d;recompute();}); }
+      if(config&&config.source){ st.unsub=client.elements.subscribeToElementData(srcId(config.source),function(d){st.data=d;recompute();}); }
       recompute();
     });
   } else { render({title:'Volume — Pace to Target',format:'number'},782000,1000000); }

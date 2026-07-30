@@ -1,0 +1,377 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Sigma plugin scaffold</title>
+<!--
+  CLONE THIS FILE to start a bespoke plugin. Single file, CDN SDK, no build step —
+  `python3 -m http.server 8080` in plugins/ is the whole dev loop, and
+  scripts/register_plugin.py takes a bare URL.
+
+  Only three places are per-plugin:
+    1. BINDINGS   — the columns your viz needs
+    2. VIZ        — DEFAULT_SETTINGS.viz + the draw() body
+    3. the <style> rules specific to your marks
+
+  Everything else (settings JSON, edit-mode drawer, theme, resize, loading states)
+  is shared machinery — leave it alone.
+
+  WHAT THE WORKBOOK ACTUALLY GIVES YOU: per the SDK types, PluginStyle is
+  `{ backgroundColor: string }` and nothing else. There is no palette, accent,
+  font or text colour to inherit. So: take the background from the workbook,
+  derive a readable foreground from its luminance, and get every other visual
+  decision from settings. That asymmetry is the reason the JSON settings pattern
+  exists.
+-->
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
+<style>
+  :root {
+    --bg:#ffffff; --fg:#191919; --muted:#8A8F94; --accent:#0046BE;
+    --good:#1E8E5A; --bad:#C0392B; --radius:12px; --pad:16px; --fs:1;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+              font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  #root { height:100%; padding:var(--pad); display:flex; flex-direction:column; }
+  #msg  { margin:auto; color:var(--muted); font-size:calc(13px * var(--fs)); text-align:center; white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; max-height:100%; overflow:auto; }
+  /* --- VIZ: your marks go here --- */
+  #viz  { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; }
+  .val  { font-size:calc(34px * var(--fs)); font-weight:800; letter-spacing:-0.02em; }
+
+  /* --- shared: the edit-mode settings drawer --- */
+  #gear { position:absolute; top:8px; right:8px; border:0; background:transparent;
+          color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:4px; }
+  #drawer { position:absolute; inset:0; background:var(--bg); padding:var(--pad);
+            overflow:auto; display:none; }
+  #drawer.open { display:block; }
+  #drawer h3 { margin:0 0 8px; font-size:calc(13px * var(--fs)); }
+  #drawer textarea { width:100%; height:60%; font-family:ui-monospace,Menlo,monospace;
+                     font-size:12px; border:1px solid var(--muted); border-radius:6px; padding:8px;
+                     background:var(--bg); color:var(--fg); }
+  #drawer .row { display:flex; gap:8px; margin-top:8px; }
+  #drawer button { padding:6px 12px; border-radius:6px; border:1px solid var(--muted);
+                   background:var(--bg); color:var(--fg); cursor:pointer; font-size:12px; }
+  #drawer button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #err { color:var(--bad); font-size:11px; min-height:14px; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="viz"></div>
+  <div id="msg" hidden></div>
+</div>
+<button id="gear" hidden title="Plugin settings">&#9881;</button>
+<div id="drawer">
+  <h3>Plugin settings (JSON)</h3>
+  <textarea id="json" spellcheck="false"></textarea>
+  <div id="err"></div>
+  <div class="row">
+    <button class="primary" id="save">Save</button>
+    <button id="reset">Reset to defaults</button>
+    <button id="close">Close</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var BUILD = "1.0";  // shown in the fatal message; bump when debugging a stale cache
+  // Resolve the SDK client across UMD global renames.
+  //   @sigmacomputing/plugin >= 1.x  ->  window.SigmaPlugin.client
+  //   older builds                   ->  window.sigmaComputing.plugin.client
+  // Getting this wrong does NOT throw: the plugin loads, sizes itself and renders
+  // the synthetic fallback, so it looks fine while showing data that isn't yours.
+  // That is exactly how every plugin in this repo silently broke when the
+  // unversioned unpkg URL rolled forward to a build that renamed the global.
+  var client = (window.SigmaPlugin && window.SigmaPlugin.client) ||
+               (window.sigmaComputing && window.sigmaComputing.plugin &&
+                window.sigmaComputing.plugin.client) || null;
+
+  // If we're in an iframe we are almost certainly embedded in a workbook, so a
+  // missing client is a BUG, not standalone dev. Say so on screen instead of
+  // quietly rendering fake numbers.
+  var embedded = (function(){ try { return window.parent !== window; } catch(e){ return true; } })();
+
+  // ==========================================================================
+  // 1. BINDINGS — per-plugin. Keys here must match the workbook spec's
+  //    `config` keys, and each column binding is a BARE columnId string there.
+  // ==========================================================================
+  var BINDINGS = [
+    { name:'source',  type:'element' },
+    { name:'label',   type:'column', source:'source', allowMultiple:false,
+      allowedTypes:['text','date','datetime','number','integer'], label:'Label' },
+    { name:'value',   type:'column', source:'source', allowMultiple:false,
+      allowedTypes:['number','integer'], label:'Value' }
+  ];
+
+  // ==========================================================================
+  // 2. SETTINGS — everything above `viz` is shared across plugins; `viz` is yours.
+  //    Keep every key defaulted so the plugin renders before it's configured.
+  // ==========================================================================
+  var DEFAULT_SETTINGS = {
+    version: 1,
+    title: '', subtitle: '',           // '' = fall back to the bound column name
+    theme: {
+      inheritBackground: true,         // the ONLY thing the workbook exposes
+      background: '#ffffff',           // used when inheritBackground is false
+      accent: '#0046BE',
+      foreground: 'auto',              // 'auto' = derive from background luminance
+      radius: 12, padding: 16, fontScale: 1.0
+    },
+    number: {
+      format: 'auto',                  // auto | currency | number | percent
+      currency: 'USD', locale: 'en-US',
+      decimals: 'auto', abbreviate: true
+    },
+    semantics: {
+      direction: 'higher-is-better',   // | 'lower-is-better' | 'neutral'
+      goodColor: '#1E8E5A', badColor: '#C0392B'
+    },
+    empty: { message: 'No data for the current filters.' },
+    viz: { /* per-plugin only */ }
+  };
+
+  // ---- shared machinery ----------------------------------------------------
+  function deepMerge(base, over) {
+    if (!over || typeof over !== 'object' || Array.isArray(over)) return base;
+    var out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    Object.keys(over).forEach(function (k) {
+      var b = out[k], o = over[k];
+      out[k] = (b && o && typeof b === 'object' && typeof o === 'object' &&
+                !Array.isArray(b) && !Array.isArray(o)) ? deepMerge(b, o) : o;
+    });
+    return out;
+  }
+
+  // Merge with defaults on every load so settings added in a later version pick
+  // up their default instead of coming back undefined.
+  function loadSettings(raw) {
+    if (!raw || !String(raw).trim()) return deepMerge(DEFAULT_SETTINGS, {});
+    try { return deepMerge(DEFAULT_SETTINGS, JSON.parse(raw)); }
+    catch (e) { console.warn('plugin: invalid settings JSON, using defaults', e);
+                return deepMerge(DEFAULT_SETTINGS, {}); }
+  }
+  function saveSettings(obj) {
+    // config.set is a SHALLOW merge, so writing `config` leaves bindings intact.
+    if (client) client.config.set({ config: JSON.stringify(obj, null, 2) });
+  }
+
+  function luminance(hex) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || ''));
+    if (!m) return 1;
+    var c = [1,2,3].map(function (i) {
+      var v = parseInt(m[i], 16) / 255;
+      return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4);
+    });
+    return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+  }
+
+  function applyTheme(s, workbookBg) {
+    var bg = (s.theme.inheritBackground && workbookBg) ? workbookBg : s.theme.background;
+    var fg = s.theme.foreground !== 'auto' ? s.theme.foreground
+           : (luminance(bg) < 0.5 ? '#ffffff' : '#191919');
+    var r = document.documentElement.style;
+    r.setProperty('--bg', bg);
+    r.setProperty('--fg', fg);
+    r.setProperty('--muted', luminance(bg) < 0.5 ? 'rgba(255,255,255,.65)' : '#8A8F94');
+    r.setProperty('--accent', s.theme.accent);
+    r.setProperty('--good', s.semantics.goodColor);
+    r.setProperty('--bad', s.semantics.badColor);
+    r.setProperty('--radius', s.theme.radius + 'px');
+    r.setProperty('--pad', s.theme.padding + 'px');
+    r.setProperty('--fs', String(s.theme.fontScale));
+  }
+
+  function fmt(n, s) {
+    if (n == null || isNaN(n)) return '—';
+    var f = s.number.format, abs = Math.abs(n), out;
+    var opts = { style:'decimal', maximumFractionDigits: s.number.decimals === 'auto' ? 2 : s.number.decimals };
+    if (f === 'percent') return new Intl.NumberFormat(s.number.locale,
+      { style:'percent', maximumFractionDigits:1 }).format(n);
+    if (s.number.abbreviate && abs >= 1000) {
+      var u = ['','K','M','B','T'], i = Math.min(Math.floor(Math.log10(abs)/3), 4);
+      out = (n/Math.pow(1000,i)).toFixed(abs/Math.pow(1000,i) >= 100 ? 0 : 1) + u[i];
+      return f === 'currency'
+        ? new Intl.NumberFormat(s.number.locale, {style:'currency',currency:s.number.currency,
+            maximumFractionDigits:0}).format(0).replace(/[\d.,\s]/g,'') + out
+        : out;
+    }
+    if (f === 'currency') return new Intl.NumberFormat(s.number.locale,
+      Object.assign({style:'currency',currency:s.number.currency}, opts)).format(n);
+    return new Intl.NumberFormat(s.number.locale, opts).format(n);
+  }
+
+  // Direction-aware colour: 'lower-is-better' inverts, so cost / churn / latency
+  // don't render a drop as bad.
+  function deltaColor(delta, s) {
+    if (!delta || s.semantics.direction === 'neutral') return 'var(--muted)';
+    var good = s.semantics.direction === 'lower-is-better' ? delta < 0 : delta > 0;
+    return good ? 'var(--good)' : 'var(--bad)';
+  }
+
+  function message(text) {
+    var m = document.getElementById('msg');
+    document.getElementById('viz').hidden = !!text;
+    m.hidden = !text; m.textContent = text || '';
+  }
+
+  // ==========================================================================
+  // 3. DRAW — per-plugin. Read fresh dimensions here, never cache them.
+  // ==========================================================================
+  function draw(state) {
+    var s = state.settings, rows = state.rows;
+    // A fatal message must survive later repaints. Without this the
+    // ResizeObserver's draw() immediately overwrote the "SDK not found" error
+    // with the ordinary "select a source" placeholder, hiding the real cause.
+    if (state.fatal) return message(state.fatal);
+    if (!state.hasSource)  return message('Select a source element in the editor panel.');
+    if (!state.hasColumns) return message('Bind the Label and Value columns.');
+    if (state.loading)     return message('Loading…');
+    if (!rows.length)      return message(s.empty.message);
+    message('');
+    var box = document.getElementById('viz');
+    var w = box.clientWidth, h = box.clientHeight;      // fresh every draw
+    var total = rows.reduce(function (a, r) { return a + (r.value || 0); }, 0);
+    box.innerHTML = '<div style="text-align:center">' +
+      '<div class="val">' + fmt(total, s) + '</div>' +
+      '<div style="color:var(--muted);font-size:calc(12px * var(--fs))">' +
+        (s.title || 'Total') + ' · ' + rows.length + ' rows · ' + w + '×' + h +
+      '</div></div>';
+  }
+
+  // ---- state + wiring ------------------------------------------------------
+  var state = { settings: deepMerge(DEFAULT_SETTINGS, {}), rows: [],
+                hasSource: false, hasColumns: false, workbookBg: null };
+
+  function repaint() { applyTheme(state.settings, state.workbookBg); draw(state); }
+
+  function buildEditorPanel(editMode) {
+    // The two shared entries every plugin gets. `config` holds the whole settings
+    // object as a JSON string; `editMode` gates the drawer so viewers never see it.
+    return BINDINGS.concat([
+      { name:'config',   type:'text',   label:'Settings (JSON)', defaultValue:'{}' },
+      { name:'editMode', type:'toggle', label:'Edit mode' }
+    ]);
+  }
+
+  // The elements API wants the element id as a STRING. Depending on how the
+  // config was authored, `source` arrives either as that bare id or as the
+  // spec-layer object {kind:"element", elementId}. Accept both.
+  function srcId(cfg) {
+    var s = cfg && cfg.source;
+    return (s && typeof s === 'object') ? (s.elementId || s.id) : s;
+  }
+
+  function onConfig(cfg) {
+    cfg = cfg || {};
+    state.settings = loadSettings(cfg.config);
+    state.hasSource = !!cfg.source;
+    state.hasColumns = !!(cfg.label && cfg.value);
+    var edit = cfg.editMode === true || cfg.editMode === 'true';
+    document.getElementById('gear').hidden = !edit;
+    if (!edit) document.getElementById('drawer').classList.remove('open');
+
+    // Always drop the previous subscription before making a new one.
+    if (state.unsub) { try { state.unsub(); } catch (e) {} state.unsub = null; }
+
+    if (client && state.hasSource && state.hasColumns) {
+      // Data arrives asynchronously; without a loading state the element is
+      // BLANK in the gap. Only on a cold load, so a refilter doesn't flicker.
+      if (!state.rows.length) { state.loading = true; repaint(); }
+      try {
+        // The elements API is SUBSCRIPTION-based and takes the element id as a
+        // STRING. There is no getElementData() — assuming one existed left the
+        // plugin stuck on "Loading…" forever, because calling an undefined
+        // method throws synchronously and never reaches a .catch().
+        state.unsub = client.elements.subscribeToElementData(srcId(cfg), function (data) {
+          var L = (data && data[cfg.label]) || [], V = (data && data[cfg.value]) || [];
+          state.rows = L.map(function (l, i) { return { label: l, value: V[i] }; });
+          state.loading = false; repaint();
+        });
+      } catch (e) {
+        state.loading = false;
+        state.fatal = 'Failed to subscribe to element data:\n' + e.message + '\n[build ' + BUILD + ']';
+        repaint();
+      }
+    } else { state.rows = []; state.loading = false; repaint(); }
+  }
+
+  // Settings drawer
+  var drawer = document.getElementById('drawer'), ta = document.getElementById('json');
+  document.getElementById('gear').onclick = function () {
+    ta.value = JSON.stringify(state.settings, null, 2);
+    document.getElementById('err').textContent = '';
+    drawer.classList.add('open');
+  };
+  document.getElementById('close').onclick = function () { drawer.classList.remove('open'); };
+  document.getElementById('reset').onclick = function () {
+    ta.value = JSON.stringify(DEFAULT_SETTINGS, null, 2);
+  };
+  document.getElementById('save').onclick = function () {
+    try {
+      var parsed = JSON.parse(ta.value);            // validate on save AND on load
+      state.settings = deepMerge(DEFAULT_SETTINGS, parsed);
+      saveSettings(parsed);
+      drawer.classList.remove('open');
+      repaint();
+    } catch (e) { document.getElementById('err').textContent = 'Invalid JSON: ' + e.message; }
+  };
+
+  if (client) {
+    client.config.configureEditorPanel(buildEditorPanel(false));
+    // subscribe() fires on CHANGES only — it does not replay the current value.
+    // Without this get(), a plugin opened on an already-configured workbook sits
+    // on its "select a source" placeholder forever, because nothing ever changes.
+    client.config.subscribe(onConfig);
+    try {
+      var initial = client.config.get();
+      if (initial) onConfig(initial);
+    } catch (e) { console.warn('plugin: config.get() failed', e); }
+    repaint();
+    // The workbook only ever hands us a background colour — see the header note.
+    if (client.style) {
+      client.style.get().then(function (st) {
+        state.workbookBg = st && st.backgroundColor; repaint();
+      }).catch(function () {});
+      client.style.subscribe(function (st) {
+        state.workbookBg = st && st.backgroundColor; repaint();
+      });
+    }
+  } else if (embedded) {
+    // Embedded but no client: the SDK failed to load, or its global was renamed.
+    // Fail visibly — synthetic data here is worse than an error.
+    applyTheme(state.settings, null);
+    state.fatal = 'Plugin SDK not found (window.SigmaPlugin.client).\n' +
+      'The SDK UMD needs React on the page BEFORE it loads — without it its\n' +
+      'factory throws and SigmaPlugin is left an empty object.\n' +
+      'Check both <script> tags (react, then @sigmacomputing/plugin).\n' +
+      '[build ' + BUILD + ']';
+    message(state.fatal);
+  } else {
+    // Standalone preview so you can iterate at localhost without a workbook.
+    state.hasSource = state.hasColumns = true;
+    state.rows = [{label:'A',value:120},{label:'B',value:340},{label:'C',value:90}];
+    repaint();
+  }
+
+  // MANDATORY for any plugin that MEASURES its container (clientWidth, canvas,
+  // getBoundingClientRect). Sigma resizes the plugin iframe without firing
+  // window.resize, so a `resize` listener alone is not enough — that's the
+  // classic "wonky plugin" bug. Plugins laid out purely in CSS or an SVG
+  // viewBox scale natively and don't strictly need it; keeping it here costs
+  // nothing and stops the bug reappearing the moment someone adds a measurement.
+  if (window.ResizeObserver) new ResizeObserver(function () { draw(state); })
+    .observe(document.getElementById('root'));
+  window.addEventListener('resize', function () { draw(state); });
+})();
+</script>
+</body>
+</html>

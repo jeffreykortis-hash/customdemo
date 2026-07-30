@@ -15,3 +15,11 @@ vanilla JS on the `@sigmacomputing/plugin` SDK; synthetic fallback so it preview
 3. Embed in a workbook spec: `{kind:"plugin", pluginId, config:{source:{kind:"element",elementId}, day:"<colId>", hour:"<colId>", value:"<colId>"}}` (bindings are bare columnId strings that match the editor-panel names).
 
 Bind to a 7×24 day-part source (see `skills/sigma-company-dashboard/examples/build_cava.py` for a full 2-page workbook generator that builds the source, KPIs, agents, and this plugin).
+
+## Fixed 2026-07-30
+
+- **Cells were last-write-wins.** The build loop did `m[di][h]=v`, so when more
+  than one row landed in the same (day, hour) cell every row but the last was
+  silently discarded — a raw transaction feed lost nearly all of its data and
+  still rendered a plausible-looking heatmap. It now aggregates, with a new
+  `aggregate` option (Sum / Average / Max / Min, default Sum).

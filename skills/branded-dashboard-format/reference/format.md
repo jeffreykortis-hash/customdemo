@@ -1,24 +1,33 @@
-# The Format — canonical page + element checklist
+# Layout `analyst-detail` — page + element checklist
 
-The recurring composition. One page does the job for most asks; add drill pages
-(Trend / Detail / Exceptions) only when the question demands it. Defer to
-`sigma-workbook-conventions` for field shapes, layout XML, and the division/`nullif`
-and KPI/pivot/control gotchas — this file is about *what goes where*.
+This is catalog layout **`analyst-detail`**: header/filter-bar → two KPI rows →
+trend → a wide detail pivot people pull from. For **when to choose it** over the
+other five shapes, see `sigma-company-dashboard/reference/layouts.md`. This file
+is about *what goes where* once it's chosen.
+
+One page does the job for most asks; add drill pages (Trend / Detail /
+Exceptions) — **or switch layouts** — only when the question demands it. Defer to
+`sigma-workbook-conventions` for field shapes, layout XML, and the
+division/`nullif` and KPI/pivot/control gotchas.
 
 ## Element inventory (single overview page)
 
-| Block | Element(s) | Required | Notes |
-|-------|-----------|----------|-------|
-| Header | `container-header` | ✅ | Holds logo+title (left), Date Range + grain control (right). |
-| — logo | `image` element | ✅ | `{kind:"image", url:"…"}` in the header (NOT a markdown image — `text` doesn't render those). See brand-kit. |
-| — title | `text` (markdown) | ✅ | `## **<Title>**` + one-line subtitle (omit brand name when the logo is present). |
-| — date range | `control` `date-range` | ✅ | Bound to the base table's date column. |
-| — grain | `control` `segmented` | ✅ | `controlId: c-dategrain`, values `Day/Week/Month`, default `Month`. Drives the trend's `DateTrunc`. |
-| Filters | `container-filters` | ✅ | A single row of `list` controls, all bound to the base table. |
-| KPI band | `kpi-chart` ×N | ✅ | Headline/funnel KPIs first row; rate KPIs second. Each has a date dim for sparkline. |
-| Trend | `line-chart` (or combo) | ✅ | x = `DateTrunc([c-dategrain], [<base>/<Date>])`; y = the funnel/headline series. |
-| Detail | `pivot-table` (wide) | ✅ | Analytical dimensions as `rowsBy`; every metric in `values`; grand totals on. |
-| Base | `table` (the source) | ✅ | The two-tier root; placed bare at the bottom (acts as drill/detail + source). |
+Tiers are scoped to **this layout**. Other catalog layouts have different
+required sets — `exec-brief` deliberately has no detail pivot, for instance, so
+"Required" here does not mean "required in every dashboard."
+
+| Block | Element(s) | Tier | Notes |
+|-------|-----------|------|-------|
+| Header | `container-header` | **Required** | Holds logo+title (left), Date Range + grain control (right). |
+| — logo | `image` element | **Required** | `{kind:"image", url:"…"}` in the header (NOT a markdown image — `text` doesn't render those). See brand-kit. |
+| — title | `text` (markdown) | **Required** | `## **<Title>**` + one-line subtitle (omit brand name when the logo is present). |
+| — date range | `control` `date-range` | Recommended | Bound to the base table's date column. |
+| — grain | `control` `segmented` | Recommended | `controlId: c-dategrain`, values `Day/Week/Month`, default `Month`. Drives the trend's `DateTrunc`. |
+| Filters | `container-filters` | Recommended | A single row of `list` controls, all bound to the base table. |
+| KPI band | `kpi-chart` ×N | **Required** | Headline/funnel KPIs first row; rate KPIs second. Each has a date dim for sparkline. |
+| Trend | `line-chart` (or combo) | By signal — needs a date column | x = `DateTrunc([c-dategrain], [<base>/<Date>])`; y = the funnel/headline series. |
+| Detail | `pivot-table` (wide) | **Required for this layout** | Analytical dimensions as `rowsBy`; every metric in `values`; grand totals on. It's the point of `analyst-detail`; if you don't want it, you want a different layout. |
+| Base | `table` (the source) | **Required** | The two-tier root; placed bare at the bottom (acts as drill/detail + source). |
 
 ## Two-tier sourcing (the spine)
 
@@ -67,4 +76,6 @@ don't propagate.
 
 Overview → **Trend** (period-over-period, comparison controls) → **Detail**
 (row-level) → **Exceptions** (anomaly/threshold list). Same two-tier spine, same
-brand. Don't pre-build these; add when the question needs them.
+brand. Don't pre-build these; add when the question needs them — **or switch to a
+layout that already answers it**. A period-over-period ask is usually
+`comparison-variance`, not a Trend drill page bolted onto this one.

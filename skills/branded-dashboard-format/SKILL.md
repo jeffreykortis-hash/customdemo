@@ -77,20 +77,25 @@ Sigma. To brand a workbook:
 2. Pick a **signature move** (e.g. a single two-color gradient used once, for a
    hero/accent moment — not everywhere).
 
-**How it lands in Sigma:** the global font + color palette is a **workbook Theme**
-set once in the UI (Sigma's theme isn't fully represented in the code spec — see
-`reference/brand-kit.md`). The spec-level brand choices you DO control: the header
-logo (a dedicated **`image` element** with a `url` — NOT a markdown image, which
-`text` elements don't render), chart `color` encodings using the palette order,
-and the bold markdown title. Set the Theme once, then every element inherits it.
+**How it lands in Sigma:** the global font + color palette is the top-level
+**`themeOverrides`** object, set in the spec — no UI step. Verified 2026-07-30 by
+POST → GET: `colors`, `colorOverrides`, `categoricalScheme`, `fonts`, `pageWidth`
+and `tableStyles` all round-trip intact (hex is normalized to lowercase). Full
+reference in **`sigma-workbook-styling`**, which is authoritative for theme; the
+brand-kit token table maps onto those keys.
+
+The other spec-level brand choices: the header logo (a dedicated **`image` element**
+with a `url` — NOT a markdown image, which `text` elements don't render), chart
+`color` encodings using the palette order, and the bold markdown title.
 
 ## Workflow
 
 1. Build the workbook per `reference/format.md` (clone an example spec and adapt).
 2. Fill in `reference/brand-kit.md` with the target company's tokens, then apply
    brand color encodings + the logo/title in-spec.
-3. POST, then in the UI apply the workbook Theme (font + palette). Verify in the
-   UI — theme/font are UI-side.
+3. Put the palette and font into top-level `themeOverrides` in the same spec.
+4. POST, then **open it in a browser and verify** — HTTP 200 does not prove the
+   elements render. Nothing here needs a manual UI theming step.
 
 ## Reference & examples
 

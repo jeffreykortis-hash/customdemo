@@ -618,17 +618,31 @@ This is useful as an alternative (or complement) to the `editMode` toggle — `s
 
 ### Plugin Styles
 
-Sigma can push style information to the plugin (e.g., workbook theme colors):
+Sigma pushes style information to the plugin — but **far less than you'd expect**.
+Per the SDK types (`@sigmacomputing/plugin@1.2.0`), `PluginStyle` has exactly one
+property:
+
+```ts
+interface PluginStyle { backgroundColor: string }
+```
+
+That's the whole surface. **No palette, no accent, no fonts, no text color.** Don't
+plan on inheriting a workbook theme — you can't. What you *can* do is inherit the
+background and derive a readable foreground from its luminance, then take every
+other visual decision from your own config (see the JSON settings pattern in
+`sigma-plugin-patterns`, implemented in `plugins/_scaffold/`).
 
 ```javascript
-// React: not yet available as a hook — use client API
-const style = await client.style.get();
+// React: there IS a hook — usePluginStyle() — plus the client API:
+const style = await client.style.get();          // -> { backgroundColor }
 
-// Subscribe to style changes
-client.style.subscribe((pluginStyle) => {
-  // Apply workbook theme colors to your plugin
+const unsubscribe = client.style.subscribe((pluginStyle) => {
+  // fires on workbook theme changes; re-derive and repaint
+  applyTheme(pluginStyle.backgroundColor);
 });
 ```
+
+`subscribe` returns an unsubscriber — call it on teardown.
 
 ### Loading State
 

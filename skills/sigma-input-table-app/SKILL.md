@@ -58,7 +58,10 @@ These are the things that were repeatedly *missing* on first builds. Include the
 5. **Light theme base, dark accents.** A *dark* workbook theme makes input tables and
    dropdowns render white-text-on-white = invisible. Base the theme LIGHT
    (`backgroundCanvas #fff`, dark `text`); apply dark only to the hero/toolbar/gradient
-   KPI cards, with baked light-text images on those.
+   KPI cards, with baked light-text images on those. This is a hard requirement of
+   the `app-shell` layout, not a preference. The theme system itself —
+   every `themeOverrides` key and what round-trips — is documented in
+   **`sigma-workbook-styling`**.
 
 ## Aesthetics — restrained, light, element-level (the look, not just the mechanics)
 

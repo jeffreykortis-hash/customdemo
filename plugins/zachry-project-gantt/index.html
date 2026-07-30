@@ -4,7 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Project Portfolio Gantt — Zachry Sigma Plugin</title>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -41,16 +48,33 @@
 <div id="tip"></div>
 <script>
 (function(){
-  var client=(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
+  // subscribe() does NOT replay the current config — verified in Sigma: a
+  // preconfigured workbook produced zero config events until get() was called.
+  // Shim it once so every existing subscribe() call also sees the current value.
+  if (client && client.config && client.config.get) {
+    var _origSub = client.config.subscribe.bind(client.config);
+    client.config.subscribe = function (fn) {
+      var un = _origSub(fn);
+      try { var i = client.config.get(); if (i) fn(i); } catch (e) {}
+      return un;
+    };
+  }
   var PALETTE=['#C8102E','#3A4551','#F2A900','#0E7C7B','#2E6FB0','#6B4E9E','#9A1B2F','#5F6B7A'];
   var defs=[
     {name:'source',type:'element'},
-    {name:'project',type:'column',source:'source',label:'Project'},
-    {name:'division',type:'column',source:'source',label:'Division'},
-    {name:'start',type:'column',source:'source',label:'Start date'},
-    {name:'end',type:'column',source:'source',label:'End date'},
-    {name:'percent',type:'column',source:'source',allowedTypes:['number','integer'],label:'% complete'},
-    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Contract value'}
+    {name:'project',type:'column',allowMultiple:false,source:'source',label:'Project'},
+    {name:'division',type:'column',allowMultiple:false,source:'source',label:'Division'},
+    {name:'start',type:'column',allowMultiple:false,source:'source',label:'Start date'},
+    {name:'end',type:'column',allowMultiple:false,source:'source',label:'End date'},
+    {name:'percent',type:'column',allowMultiple:false,source:'source',allowedTypes:['number','integer'],label:'% complete'},
+    {name:'value',type:'column',allowMultiple:false,source:'source',allowedTypes:['number','integer'],label:'Contract value'}
   ];
   if(client) client.config.configureEditorPanel(defs);
   var LBL=168, tip=document.getElementById('tip');
@@ -115,10 +139,14 @@
   }
   if(client){ client.config.subscribe(function(cfg){ st.cfg=cfg||{};
     if(st.unsub){st.unsub();st.unsub=null;}
-    if(cfg&&cfg.source){ st.unsub=client.elements.subscribeToElementData(cfg.source,function(d){ st.data=d; recompute(); }); }
+    if(cfg&&cfg.source){ st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(d){ st.data=d; recompute(); }); }
     recompute(); });
   } else { recompute(); }
   window.addEventListener('resize',function(){ recompute(); });
+  // Sigma resizes the plugin IFRAME without firing window.resize, so the
+  // listener above is not enough on its own — observe the container too.
+  if (window.ResizeObserver) new ResizeObserver(function(){ recompute(); })
+    .observe(document.body);
 })();
 </script>
 </body>

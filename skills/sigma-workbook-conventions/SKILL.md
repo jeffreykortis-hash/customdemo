@@ -233,8 +233,10 @@ That contract puts the burden on the agent:
 
 ### Page/folder layout
 
-- First page = **Overview** (KPI tiles + a single primary visualization).
-- Subsequent pages drill from coarse → fine: Overview → Trend → Detail → Exception list.
+- Default when no named layout has been chosen: first page = **Overview** (KPI
+  tiles + a single primary visualization), subsequent pages drilling coarse → fine
+  (Overview → Trend → Detail → Exception list). If the build *has* picked a layout
+  from `sigma-company-dashboard/reference/layouts.md`, that shape wins over this.
 - Group related controls into a single Filter Bar at the top of each page rather than scattering.
 - Use folder groupings for any model with >10 elements; flat models are hard to read.
 

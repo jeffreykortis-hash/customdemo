@@ -49,26 +49,36 @@ so reserve red strictly for true alerts.
 
 ## How to apply each in Sigma
 
-Sigma splits into **Theme** (global, UI-side) and **spec** (per-element). Know
-which is which:
+Sigma splits into the **global theme** (top-level `themeOverrides`) and
+**per-element `style`**. Both are code. Know which is which:
 
-### 1. Workbook Theme — set once in the UI (NOT fully in the code spec)
+### 1. Global theme — top-level `themeOverrides`, set IN THE SPEC
 
-Sigma's font + global color palette live in the workbook **Theme**, which is
-largely UI-side state and does not round-trip in the workbook spec. So:
+**Verified 2026-07-30 (POST → GET):** `colors`, `colorOverrides`,
+`categoricalScheme`, `fonts`, `pageWidth` and `tableStyles` all round-trip
+intact. Hex is normalized to lowercase; nothing else changes. There is no manual
+UI theming step.
 
-- Create/select a custom Theme named **"adMarketplace"**:
-  - **Font:** Geist (if not in Sigma's font list, add it as a custom font, or
-    fall back to Poppins → then a system sans).
-  - **Accent / primary:** `#3b45ff`.
-  - **Categorical palette:** the series order above.
-  - **Background:** `#ffffff` (page), cards `#f8f8f8`/`#deedff`.
-  - **Text:** headings `#00022e`, body `#00022e`, muted `#758696`.
-- Apply the Theme to the workbook after POST. Re-apply when cloning.
+> ⚠️ An earlier version of this file said the theme was "largely UI-side state"
+> and told you not to encode font/palette in the spec because "it won't stick."
+> That was **wrong**, and it was expensive — it stopped the agent from even
+> trying a capability that works. Fonts in particular do round-trip.
 
-> Because the Theme is UI-side, document it here and set it in the UI — don't
-> try to encode font/palette in the spec (it won't stick). This mirrors the
-> "scope of the code representation" caveat in `sigma-workbook-conventions`.
+Map this kit's tokens onto the keys:
+
+```json
+"themeOverrides": {
+  "fonts":  { "textFont": "Geist", "dataFont": "Geist" },
+  "colors": { "text": "#00022e", "highlight": "#3b45ff", "darkMode": "hidden" },
+  "colorOverrides":    { "backgroundCanvas": "#ffffff", "canvasBackground": "#f8f8f8" },
+  "categoricalScheme": ["#3b45ff", "..."],
+  "pageWidth":         "large"
+}
+```
+
+A font still has to exist in the org to render — an unknown `textFont` falls back
+silently, so confirm on screen. `sigma-workbook-styling` is authoritative for the
+full key list and the rendering traps.
 
 ### 2. Spec-level brand choices you DO control
 
@@ -99,10 +109,19 @@ largely UI-side state and does not round-trip in the workbook spec. So:
 - **KPI emphasis** — lead with the headline KPI; the Theme accent (`#3b45ff`)
   carries the highlight, so you don't hand-color tiles in the spec.
 
-### 3. What you can't brand in-spec (note + move on)
+### 3. What genuinely still needs the UI
 
-Font family, global palette, pill-radius, and card shadows are Theme/UI. Set the
-Theme once; don't burn iterations trying to express them in JSON.
+Short list, and font/palette are **not** on it — those are `themeOverrides` (§1):
+
+- Creating a **named, reusable Theme** for the org (the *values* are all
+  expressible per-workbook in `themeOverrides`; only the saved, shareable
+  preset is UI state).
+- The **repeat toggle** on a repeated container — see `sigma-workbook-styling`;
+  clone a known-good example rather than authoring it.
+- Fine live nudging of spacing once you can see it rendered.
+
+Everything else — font, palette, canvas, text colors, table density, page width,
+border radius, padding — is code.
 
 ## Swapping the brand (reuse for another prospect)
 

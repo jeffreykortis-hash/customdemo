@@ -4,7 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Day-part Revenue Heatmap — CAVA Sigma Plugin</title>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -35,13 +42,21 @@
 <div id="tip"></div>
 <script>
 (function(){
-  var client=(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
   var DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   var defs=[
     {name:'source',type:'element'},
-    {name:'day',type:'column',source:'source',label:'Day of week'},
-    {name:'hour',type:'column',source:'source',allowedTypes:['number','integer'],label:'Hour (0-23)'},
-    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Revenue'}
+    {name:'day',type:'column',source:'source',allowMultiple:false,label:'Day of week'},
+    {name:'hour',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Hour (0-23)'},
+    {name:'value',type:'column',source:'source',allowMultiple:false,allowedTypes:['number','integer'],label:'Revenue'},
+    // How to combine multiple rows landing in the same (day, hour) cell.
+    {name:'aggregate',type:'dropdown',values:['Sum','Average','Max','Min'],defaultValue:'Sum',label:'Aggregate per cell'}
   ];
   if(client) client.config.configureEditorPanel(defs);
   function lerp(a,b,t){return a+(b-a)*t;}
@@ -91,17 +106,37 @@
   function recompute(){ var c=st.cfg||{},d=st.data;
     if(d&&c.value&&d[c.value]){
       var day=d[c.day]||[],hour=d[c.hour]||[],val=d[c.value]||[];
-      var m=[]; for(var i=0;i<7;i++){m[i]=[]; for(var j=0;j<24;j++)m[i][j]=0;}
+      var agg=(c.aggregate||'Sum');
+      var m=[],n=[]; for(var i=0;i<7;i++){m[i]=[];n[i]=[]; for(var j=0;j<24;j++){m[i][j]=0;n[i][j]=0;}}
       var any=false;
-      for(var i=0;i<val.length;i++){ var di=DAYS.indexOf(String(day[i])); var h=Math.round(Number(hour[i])); var v=Number(val[i])||0;
-        if(di>=0&&h>=0&&h<24){ m[di][h]=v; if(v>0)any=true; } }
+      // AGGREGATE across rows landing in the same (day, hour) cell. This used to
+      // be `m[di][h]=v` — last-write-wins — which silently discarded every row
+      // but the last whenever the source wasn't already pre-aggregated to one
+      // row per cell. A raw transaction feed lost almost all of its data.
+      for(var i=0;i<val.length;i++){ var di=DAYS.indexOf(String(day[i])); var h=Math.round(Number(hour[i])); var v=Number(val[i]);
+        if(di>=0&&h>=0&&h<24&&!isNaN(v)){
+          if(agg==='Max')      m[di][h] = n[di][h] ? Math.max(m[di][h],v) : v;
+          else if(agg==='Min') m[di][h] = n[di][h] ? Math.min(m[di][h],v) : v;
+          else                 m[di][h] += v;      // Sum, and the base for Average
+          n[di][h]++; if(v>0)any=true; } }
+      if(agg==='Average'){ for(var i=0;i<7;i++) for(var j=0;j<24;j++) if(n[i][j]) m[i][j]/=n[i][j]; }
       if(any){ draw(m); return; } }
     draw(synth());
   }
-  if(client){ client.config.subscribe(function(cfg){ st.cfg=cfg||{};
-    if(st.unsub){st.unsub();st.unsub=null;}
-    if(cfg&&cfg.source){ st.unsub=client.elements.subscribeToElementData(cfg.source,function(dd){ st.data=dd; recompute(); }); }
-    recompute(); });
+  function applyCfg(cfg){
+    st.cfg=cfg||{}; st.gotCfg=true;
+    if(st.unsub){ try{ st.unsub(); }catch(e){} st.unsub=null; }
+    if(cfg&&cfg.source){
+      st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(dd){
+        st.data=dd; recompute(); });
+    }
+    recompute();
+  }
+  if(client){
+    client.config.subscribe(applyCfg);
+    // Also read the CURRENT config synchronously at startup. subscribe() alone
+    // left this plugin with dataEvents=0 on a preconfigured workbook.
+    try { var _i=client.config.get(); if(_i) applyCfg(_i); } catch(e){}
   } else { recompute(); }
 })();
 </script>

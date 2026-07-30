@@ -4,7 +4,14 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Comparison KPI Card — Sigma Plugin</title>
-<script src="https://unpkg.com/@sigmacomputing/plugin"></script>
+<!-- The plugin SDK UMD build has a HARD React peer dependency: without React
+     already on the page its factory throws and window.SigmaPlugin is left an
+     EMPTY object, so client is undefined and the plugin silently renders its
+     fallback data. Both URLs are PINNED — an unversioned unpkg URL is what
+     rolled these plugins forward onto a build that renamed the global and
+     added the React dep, breaking every one of them at once. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
 <style>
   :root{ --accent:#0046BE; }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -22,7 +29,7 @@
   .val{font-size:34px;font-weight:800;line-height:1}
   .val.prior{font-size:26px;font-weight:700;opacity:.9}
   #delta{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;padding:3px 9px;border-radius:999px;margin-top:8px;background:rgba(255,255,255,.16)}
-  #delta.up{color:#c9ffd8} #delta.down{color:#ffd2d2}
+  #delta.up{color:#c9ffd8} #delta.down{color:#ffd2d2} #delta.neutral{color:rgba(255,255,255,.8)}
   svg{width:100%;height:56px;display:block;overflow:visible}
   #foot{display:flex;justify-content:space-between;align-items:center}
   #badge{font-size:10px;opacity:.6;letter-spacing:.04em}
@@ -45,8 +52,25 @@
 </div>
 <script>
 (function(){
-  var client = (window.sigmaComputing && window.sigmaComputing.plugin && window.sigmaComputing.plugin.client) || null;
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||(window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
 
+  // The elements API wants the element id as a STRING. Configured through the
+  // UI it arrives that way, but a plugin configured from the WORKBOOK SPEC
+  // gets the object form {kind:"element",elementId} — passing that straight
+  // through silently yields no data, so the plugin sits on its synthetic
+  // fallback forever. Normalize both shapes.
+  function srcId(s){ return (s && typeof s === "object") ? (s.elementId || s.id) : s; }
+  // subscribe() does NOT replay the current config — verified in Sigma: a
+  // preconfigured workbook produced zero config events until get() was called.
+  // Shim it once so every existing subscribe() call also sees the current value.
+  if (client && client.config && client.config.get) {
+    var _origSub = client.config.subscribe.bind(client.config);
+    client.config.subscribe = function (fn) {
+      var un = _origSub(fn);
+      try { var i = client.config.get(); if (i) fn(i); } catch (e) {}
+      return un;
+    };
+  }
   var cfgDefs = [
     { name:'source',   type:'element' },
     { name:'dimension',type:'column', source:'source', allowMultiple:false, allowedTypes:['datetime','date','number','integer','text'], label:'Trend order (date/x)' },
@@ -54,24 +78,43 @@
     { name:'title',    type:'text',   label:'Card title', defaultValue:'Revenue' },
     { name:'format',   type:'dropdown', values:['currency','number','percent'], defaultValue:'currency', label:'Value format' },
     { name:'comparison', type:'dropdown', values:['Recent vs prior (halves)','Last vs first point','None'], defaultValue:'Recent vs prior (halves)', label:'Comparison' },
+    // Without this, an increase is ALWAYS green — wrong for cost, churn,
+    // latency, defect rate, days-to-close.
+    { name:'direction', type:'dropdown', values:['Higher is better','Lower is better','Neutral'], defaultValue:'Higher is better', label:'Direction' },
+    { name:'currency', type:'text', label:'Currency code (ISO 4217)', defaultValue:'USD' },
+    { name:'locale',   type:'text', label:'Locale', defaultValue:'en-US' },
     { name:'accent',   type:'color',  label:'Accent color', defaultValue:'#0046BE' }
   ];
   if (client) client.config.configureEditorPanel(cfgDefs);
 
-  function fmt(v, kind){
+  // Currency symbol comes from the configured currency code, not a baked '$' —
+  // a EUR or GBP card was previously impossible.
+  function currencySymbol(code, locale){
+    try {
+      return new Intl.NumberFormat(locale||undefined,
+        {style:'currency',currency:code||'USD',maximumFractionDigits:0})
+        .format(0).replace(/[\d.,\s ]/g,'');
+    } catch(e){ return '$'; }
+  }
+  function fmt(v, kind, cfg){
+    cfg = cfg || {};
+    var locale = cfg.locale || undefined;
     if (v==null || isNaN(v)) return '—';
     if (kind==='percent') return (v*100).toFixed(1)+'%';
     if (kind==='currency'){
-      var a=Math.abs(v);
-      if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B';
-      if(a>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
-      if(a>=1e3) return '$'+(v/1e3).toFixed(1)+'K';
-      return '$'+v.toFixed(0);
+      var sym=currencySymbol(cfg.currency, locale), a=Math.abs(v);
+      if(a>=1e9) return sym+(v/1e9).toFixed(2)+'B';
+      if(a>=1e6) return sym+(v/1e6).toFixed(1)+'M';
+      if(a>=1e3) return sym+(v/1e3).toFixed(1)+'K';
+      try {
+        return new Intl.NumberFormat(locale,
+          {style:'currency',currency:cfg.currency||'USD',maximumFractionDigits:0}).format(v);
+      } catch(e){ return sym+v.toFixed(0); }
     }
     var a2=Math.abs(v);
     if(a2>=1e6) return (v/1e6).toFixed(1)+'M';
     if(a2>=1e3) return (v/1e3).toFixed(1)+'K';
-    return v.toLocaleString(undefined,{maximumFractionDigits:0});
+    return v.toLocaleString(locale,{maximumFractionDigits:0});
   }
 
   function synth(){ // fallback series so the card renders standalone
@@ -99,15 +142,21 @@
     else { var h=Math.floor(series.length/2); var recent=series.slice(h), prior=series.slice(0,h);
            cur=recent.reduce(function(a,b){return a+b;},0); pri=prior.reduce(function(a,b){return a+b;},0); }
 
-    document.getElementById('cur').textContent = fmt(cur, kind);
+    document.getElementById('cur').textContent = fmt(cur, kind, cfg);
     var pc = document.getElementById('priorCell'), del=document.getElementById('delta');
     if (pri==null){ pc.style.display='none'; del.style.display='none'; }
     else {
       pc.style.display='block';
-      document.getElementById('pri').textContent = fmt(pri, kind);
+      document.getElementById('pri').textContent = fmt(pri, kind, cfg);
       var d = pri? (cur-pri)/Math.abs(pri) : 0;
       del.style.display='inline-flex';
-      del.className = d>=0?'up':'down';
+      // The ARROW follows the number; the COLOUR follows whether that's good.
+      // With 'Lower is better' a decrease is green — without this, cost, churn,
+      // latency, defect rate and days-to-close all render backwards.
+      var lowerBetter = (cfg&&cfg.direction) === 'Lower is better';
+      var neutral     = (cfg&&cfg.direction) === 'Neutral';
+      var isGood = lowerBetter ? d < 0 : d > 0;
+      del.className = neutral ? 'neutral' : (isGood ? 'up' : 'down');
       del.textContent = (d>=0?'▲ ':'▼ ') + (Math.abs(d)*100).toFixed(1)+'% vs prior';
     }
     document.getElementById('sparkline').setAttribute('points', sparkPoints(series));
@@ -118,8 +167,26 @@
     var cfg=state.cfg||{};
     var series=null;
     if (state.data && cfg.measure && state.data[cfg.measure]){
-      var raw=state.data[cfg.measure].map(Number).filter(function(x){return !isNaN(x);});
-      // if a dimension is set, keep given order; else use as-is
+      var vals=state.data[cfg.measure].map(Number);
+      var dim = cfg.dimension ? state.data[cfg.dimension] : null;
+      // The `dimension` binding is the TREND ORDER. Both comparison modes
+      // ("recent vs prior halves", "last vs first point") are only meaningful on
+      // an ordered series, and element row order is not guaranteed — so sort by
+      // it here. Previously this was collected and ignored, which quietly
+      // computed both comparisons over an arbitrary order.
+      var pairs=[];
+      for (var i=0;i<vals.length;i++){
+        if (isNaN(vals[i])) continue;
+        pairs.push({ v: vals[i], k: dim ? dim[i] : i });
+      }
+      if (dim){
+        var numeric = pairs.every(function(p){ return p.k!=null && !isNaN(Number(p.k)); });
+        var dated   = !numeric && pairs.every(function(p){ return p.k!=null && !isNaN(Date.parse(p.k)); });
+        if (numeric)    pairs.sort(function(a,b){ return Number(a.k)-Number(b.k); });
+        else if (dated) pairs.sort(function(a,b){ return Date.parse(a.k)-Date.parse(b.k); });
+        // text dimension: no meaningful order, so preserve source order
+      }
+      var raw=pairs.map(function(p){ return p.v; });
       if (raw.length) series=raw;
     }
     render(cfg, (series&&series.length>1)?series:synth());
@@ -130,7 +197,7 @@
       state.cfg=config||{};
       if (state.unsub){ state.unsub(); state.unsub=null; }
       if (config && config.source){
-        state.unsub = client.elements.subscribeToElementData(config.source, function(data){ state.data=data; recompute(); });
+        state.unsub = client.elements.subscribeToElementData(srcId(config.source), function(data){ state.data=data; recompute(); });
       }
       recompute();
     });

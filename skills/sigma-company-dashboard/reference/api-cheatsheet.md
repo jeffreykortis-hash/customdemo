@@ -24,7 +24,7 @@ Bisect by element index; compare the offending element to a GET-back exemplar.
 - **image:** `{kind:"image", url:"<https or data-URI>", style:{fit:"cover"|"scale-down"}}`.
 - **text:** `{kind:"text", body:"<markdown, supports {{formula}} incl CallText>", verticalAlign:"middle"}`.
 - **control:** `{kind:"control", controlId (workbook-unique), controlType:"list"|"date-range"|"text-area"|..., filters:[{source:{kind:"table",elementId},columnId}], source:{kind:"source",source:{...},columnId}}`.
-- **plugin (needs a registered pluginId):** `{kind:"plugin", pluginId, config:{source:{kind:"element",elementId}, <binding>:"<columnId>"}}`. VERIFIED: each column binding is a **BARE columnId string**, not an object — the `{kind:"column",columnId,source}` object form is REJECTED (masked as `Invalid kind:"plugin"`). Binding keys must match the plugin's `configureEditorPanel` variable names. Register a plugin from code via `POST /v2/plugins {name,description,url,type:"element"}` → returns `pluginId` (no admin UI needed). List with `GET /v2/plugins`.
+- **plugin (needs a registered pluginId):** `{kind:"plugin", pluginId, config:{source:{kind:"element",elementId}, <binding>:"<columnId>"}}`. VERIFIED: each column binding is a **BARE columnId string**, not an object — the `{kind:"column",columnId,source}` object form is REJECTED (masked as `Invalid kind:"plugin"`). Binding keys must match the plugin's `configureEditorPanel` variable names. Register a plugin from code via `POST /v2/plugins {name,description,url,type:"element"}` → returns `pluginId` (no admin UI needed). List with `GET /v2/plugins`. **⚠ A spec-authored plugin binding does not take effect until the source element is re-picked in the UI — see the dedicated section below.**
 
 ## style vocabulary (rounds-trips on containers/kpi/chart/image)
 `backgroundColor` (hex or `{kind:"theme",ref:"colors-..."}`), `borderColor`,
@@ -44,6 +44,9 @@ and every `container` needs a matching `<GridContainer>` WITH nested children.
 element sourcing works** (a chart on page A can source a table on page B).
 
 ## The big gotchas
+- **Theme:** full `themeOverrides` reference (all keys verified round-tripping) is
+  in `sigma-workbook-styling` — the terse duplicates below are the ones that bite
+  most often during a command-center build.
 - **Text color = theme, not element.** `style.color` on text (and the kpi `name`)
   is ignored → renders `themeOverrides.colors.text`. White text on a dark surface
   must be a **data-URI SVG image**; a colored callout must be a **light-tint
@@ -88,6 +91,66 @@ site then deploy with an explicit `--site`.
   catches both pre-POST and `publish-datamodel.sh` runs it plus an auto-verify.
 - `/v2/files` type filter is **`data-model`** (hyphenated); legacy uploads are
   type `dataset`. A model sourced from an uploaded CSV can't `get-spec` at all.
+
+## Plugin config from the spec (verified 2026-07-30)
+Brand a plugin entirely from the generator — no editor-panel clicking:
+```python
+{"kind":"plugin","pluginId":PID,"config":{
+   "source":{"kind":"element","elementId":"tbl"},
+   "label":"c-label", "value":"c-value",          # BARE columnId strings
+   "config": json.dumps(settings),                 # whole look as one JSON string
+   "editMode":"false"}}                            # note: the STRING "false"
+```
+Verified round-tripping POST → GET **byte-identical**, including a ~200-char
+escaped JSON string. Treat **all** plugin config values as strings at the spec layer.
+
+**⚠ Round-tripping is NOT the same as working.** A spec-authored plugin config
+survives POST → GET perfectly and can still deliver no data to the plugin — see
+"Plugins configured from the SPEC are NOT equivalent to plugins configured in the
+UI" below. Always re-pick the source element in the UI afterwards, then confirm
+real numbers on screen.
+Reference implementation: `plugins/_scaffold/`.
+
+## ⚠ Plugins configured from the SPEC are NOT equivalent to plugins configured in the UI
+Verified the hard way, 2026-07-30, by watching one render.
+
+A plugin element authored via `POST /v2/workbooks/spec` round-trips perfectly on
+`GET` — and still shows **no data**. Everything below was true simultaneously:
+the spec GET returned `source:{kind:"element",elementId:"tbl"}` and
+`value:"c-rev"` exactly as submitted; at runtime the plugin received
+`source:"Zgy1se9ACJ"` (Sigma's internal element id, correctly remapped) with the
+column bindings left as the authored spec ids; and both
+`subscribeToElementData()` and `getElementColumns()` returned **nothing at all** —
+no data, no error, promises that never settled.
+
+**The binding only came alive after re-selecting the source element in the
+plugin's editor panel in the UI.** Until then it is a dangling reference.
+
+So: after POSTing a workbook containing a plugin element, **open it and re-pick
+the source** — and then confirm real numbers on screen. Budget for that step; it
+is not optional and cannot be done from the API.
+
+**Why this is dangerous rather than merely annoying:** a plugin that receives no
+data does not error. Every plugin in `plugins/` falls back to synthetic sample
+data, so a broken binding renders a confident, plausible, completely fictional
+chart. `$7.1M` of invented revenue looked exactly as trustworthy as the real
+`$2.6B`. HTTP 200, a clean GET-back, and a rendered visual are *all three*
+compatible with total failure.
+
+Client-side requirements that must ALSO hold (each independently produces the
+same silent synthetic fallback):
+- **React must load BEFORE the SDK.** The UMD build has a hard React peer dep;
+  without it the factory throws and `window.SigmaPlugin` is an empty object.
+- **Pin both CDN URLs.** An unversioned `unpkg.com/@sigmacomputing/plugin` rolled
+  every plugin here onto a build that renamed the global and added that dep.
+- **`client.config.subscribe()` does not replay the current config** — call
+  `client.config.get()` at startup or a preconfigured workbook never initialises.
+- **The elements API takes the element id as a STRING**, and there is no
+  `getElementData()`; it is `subscribeToElementData(id, cb)`.
+- **Pin `allowMultiple:false`** on single-column bindings; omitted, it defaults to
+  multiple and the binding expects an array.
+
+Reference implementation with all of this wired: `plugins/_scaffold/`.
 
 ## Writeback (verified 2026-07-30)
 `/v2/connections` exposes **`writeAccess`** (`true`/`null`) and **`writebacks`**

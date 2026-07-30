@@ -119,7 +119,10 @@ ambiguous, e.g. a retailer could plausibly want either):
    `edit` (editors, draft only) · `explore` (explore-or-greater, published) · `view`
    (everyone, published).
 
-## Layout: a 2-tab tabbed container (verified working shape)
+## Layout `app-shell` — a 2-tab tabbed container (verified working shape)
+
+The segmentation variant of catalog layout **`app-shell`** (see
+`sigma-company-dashboard/reference/layouts.md`).
 
 Mirror the reference's real structure: ONE page containing a `tabbed-container` with
 exactly 2 tabs — "Cohort Builder" (filters + agent + a row-level detail table + Save/
