@@ -39,7 +39,8 @@ which corrects a common misconception that Sigma styling is UI-only:
 | In the spec (author or clone it) | Configured in the UI |
 |---|---|
 | Element `style` — `backgroundColor`, `borderColor`, `borderWidth`, `borderRadius`, `padding`, `backgroundImage`, `fit`, `color`, `align`, `textWrap`, `bold` | The **repeat toggle** on a repeating container (bindings round-trip; the "repeat over this source" switch is finicky — clone it) |
-| **Theme color tokens** — `{ "kind": "theme", "ref": "colors-backgroundCanvas" }` used as a color value | Fine live-theme editing / theme creation |
+| **The whole global theme** — top-level `themeOverrides` (see below) | Saving a **named, reusable** Theme for the org (the values are all codeable; only the shareable preset is UI state) |
+| **Theme color tokens** — `{ "kind": "theme", "ref": "colors-backgroundCanvas" }` used as a color value | Fine live nudging once rendered |
 | **Images** — CDN URLs, inline data-URI SVGs, and column-bound `{{[Element/Column]}}` urls | |
 | **Column bindings** — `{{[Element Name/Column]}}` inside text `body` and image `url` | |
 | Element placement — `gridColumn`/`gridRow`/`gridTemplateColumns`/`Rows` | |
@@ -48,6 +49,47 @@ Because the repeat *configuration* is the one fragile piece, the reliable
 workflow is **clone-and-modify a known-good spec** from `examples/`, then swap
 the data source, columns, and copy. Always verify visually after POST — the API
 validates neither cross-element resolution nor visual quality.
+
+## Theme — `themeOverrides` (AUTHORITATIVE)
+
+This section is the single source of truth for theme in this repo. Other skills
+link here; if one contradicts this, this wins.
+
+**Verified 2026-07-30, POST → GET on staging:** every key below round-trips
+intact. Hex is normalized to lowercase (`#EB1700` → `#eb1700`); nothing else is
+altered or dropped. **There is no manual UI theming step.**
+
+```json
+"themeOverrides": {
+  "colors": { "text": "#191919", "highlight": "#eb1700", "surface": "#8c8c8c",
+              "success": "#3b7a3b", "warning": "#f0872e", "danger": "#eb1700",
+              "darkMode": "hidden" },
+  "colorOverrides":    { "backgroundCanvas": "#ffffff", "canvasBackground": "#fbfbfb" },
+  "categoricalScheme": ["#ffffff", "#eb1700", "#f0872e", "#3b7a3b"],
+  "fonts":             { "textFont": "Sofia Pro", "dataFont": "Sofia Pro" },
+  "pageWidth":         "large",
+  "tableStyles":       { "preset": "presentation", "cellSpacing": "small" }
+}
+```
+
+Prefer theme tokens (`{"kind":"theme","ref":"colors-..."}`) over literal hex on
+elements, so a palette change propagates. Reserve literal hex for deliberate
+brand accents.
+
+### The traps (all verified)
+
+- **A standalone `text` element's `style.color` is IGNORED** — it renders
+  `themeOverrides.colors.text`. A `kpi-chart`'s `name.color` *is* honored. So
+  white-on-gradient works for KPI titles but not for a `text` element sitting on
+  a dark container.
+- **Base the canvas LIGHT.** A dark theme renders control dropdowns and input
+  tables white-on-white — invisible. Put darkness in containers/gradients, not
+  the canvas. This is a hard requirement for the `app-shell` layout.
+- **`categoricalScheme[0]` is the single-line/series color** — there is no
+  per-line override. Set it to `#ffffff` when your only line lives inside a dark
+  gradient card.
+- **A font must exist in the org to render.** An unknown `textFont` falls back
+  silently rather than erroring — confirm on screen.
 
 ## The `style` object — the core of "pretty"
 
@@ -135,7 +177,10 @@ Three image sources, all verified in the specs:
 Control scaling with `style.fit` (`cover` vs `scale-down`). Place logos and
 icons *inside* their container (masthead, card header) so they move with the block.
 
-## Composition: the app-like shape
+## Composition — layout `product-surface`
+
+This is catalog layout **`product-surface`**. For when to choose it over the other
+five shapes, see `sigma-company-dashboard/reference/layouts.md`.
 
 The reference workbooks share a shape that reads as a product, not a report:
 

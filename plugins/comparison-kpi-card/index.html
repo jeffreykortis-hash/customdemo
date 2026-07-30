@@ -22,7 +22,7 @@
   .val{font-size:34px;font-weight:800;line-height:1}
   .val.prior{font-size:26px;font-weight:700;opacity:.9}
   #delta{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;padding:3px 9px;border-radius:999px;margin-top:8px;background:rgba(255,255,255,.16)}
-  #delta.up{color:#c9ffd8} #delta.down{color:#ffd2d2}
+  #delta.up{color:#c9ffd8} #delta.down{color:#ffd2d2} #delta.neutral{color:rgba(255,255,255,.8)}
   svg{width:100%;height:56px;display:block;overflow:visible}
   #foot{display:flex;justify-content:space-between;align-items:center}
   #badge{font-size:10px;opacity:.6;letter-spacing:.04em}
@@ -54,24 +54,43 @@
     { name:'title',    type:'text',   label:'Card title', defaultValue:'Revenue' },
     { name:'format',   type:'dropdown', values:['currency','number','percent'], defaultValue:'currency', label:'Value format' },
     { name:'comparison', type:'dropdown', values:['Recent vs prior (halves)','Last vs first point','None'], defaultValue:'Recent vs prior (halves)', label:'Comparison' },
+    // Without this, an increase is ALWAYS green — wrong for cost, churn,
+    // latency, defect rate, days-to-close.
+    { name:'direction', type:'dropdown', values:['Higher is better','Lower is better','Neutral'], defaultValue:'Higher is better', label:'Direction' },
+    { name:'currency', type:'text', label:'Currency code (ISO 4217)', defaultValue:'USD' },
+    { name:'locale',   type:'text', label:'Locale', defaultValue:'en-US' },
     { name:'accent',   type:'color',  label:'Accent color', defaultValue:'#0046BE' }
   ];
   if (client) client.config.configureEditorPanel(cfgDefs);
 
-  function fmt(v, kind){
+  // Currency symbol comes from the configured currency code, not a baked '$' —
+  // a EUR or GBP card was previously impossible.
+  function currencySymbol(code, locale){
+    try {
+      return new Intl.NumberFormat(locale||undefined,
+        {style:'currency',currency:code||'USD',maximumFractionDigits:0})
+        .format(0).replace(/[\d.,\s ]/g,'');
+    } catch(e){ return '$'; }
+  }
+  function fmt(v, kind, cfg){
+    cfg = cfg || {};
+    var locale = cfg.locale || undefined;
     if (v==null || isNaN(v)) return '—';
     if (kind==='percent') return (v*100).toFixed(1)+'%';
     if (kind==='currency'){
-      var a=Math.abs(v);
-      if(a>=1e9) return '$'+(v/1e9).toFixed(2)+'B';
-      if(a>=1e6) return '$'+(v/1e6).toFixed(1)+'M';
-      if(a>=1e3) return '$'+(v/1e3).toFixed(1)+'K';
-      return '$'+v.toFixed(0);
+      var sym=currencySymbol(cfg.currency, locale), a=Math.abs(v);
+      if(a>=1e9) return sym+(v/1e9).toFixed(2)+'B';
+      if(a>=1e6) return sym+(v/1e6).toFixed(1)+'M';
+      if(a>=1e3) return sym+(v/1e3).toFixed(1)+'K';
+      try {
+        return new Intl.NumberFormat(locale,
+          {style:'currency',currency:cfg.currency||'USD',maximumFractionDigits:0}).format(v);
+      } catch(e){ return sym+v.toFixed(0); }
     }
     var a2=Math.abs(v);
     if(a2>=1e6) return (v/1e6).toFixed(1)+'M';
     if(a2>=1e3) return (v/1e3).toFixed(1)+'K';
-    return v.toLocaleString(undefined,{maximumFractionDigits:0});
+    return v.toLocaleString(locale,{maximumFractionDigits:0});
   }
 
   function synth(){ // fallback series so the card renders standalone
@@ -99,15 +118,21 @@
     else { var h=Math.floor(series.length/2); var recent=series.slice(h), prior=series.slice(0,h);
            cur=recent.reduce(function(a,b){return a+b;},0); pri=prior.reduce(function(a,b){return a+b;},0); }
 
-    document.getElementById('cur').textContent = fmt(cur, kind);
+    document.getElementById('cur').textContent = fmt(cur, kind, cfg);
     var pc = document.getElementById('priorCell'), del=document.getElementById('delta');
     if (pri==null){ pc.style.display='none'; del.style.display='none'; }
     else {
       pc.style.display='block';
-      document.getElementById('pri').textContent = fmt(pri, kind);
+      document.getElementById('pri').textContent = fmt(pri, kind, cfg);
       var d = pri? (cur-pri)/Math.abs(pri) : 0;
       del.style.display='inline-flex';
-      del.className = d>=0?'up':'down';
+      // The ARROW follows the number; the COLOUR follows whether that's good.
+      // With 'Lower is better' a decrease is green — without this, cost, churn,
+      // latency, defect rate and days-to-close all render backwards.
+      var lowerBetter = (cfg&&cfg.direction) === 'Lower is better';
+      var neutral     = (cfg&&cfg.direction) === 'Neutral';
+      var isGood = lowerBetter ? d < 0 : d > 0;
+      del.className = neutral ? 'neutral' : (isGood ? 'up' : 'down');
       del.textContent = (d>=0?'▲ ':'▼ ') + (Math.abs(d)*100).toFixed(1)+'% vs prior';
     }
     document.getElementById('sparkline').setAttribute('points', sparkPoints(series));
@@ -118,8 +143,26 @@
     var cfg=state.cfg||{};
     var series=null;
     if (state.data && cfg.measure && state.data[cfg.measure]){
-      var raw=state.data[cfg.measure].map(Number).filter(function(x){return !isNaN(x);});
-      // if a dimension is set, keep given order; else use as-is
+      var vals=state.data[cfg.measure].map(Number);
+      var dim = cfg.dimension ? state.data[cfg.dimension] : null;
+      // The `dimension` binding is the TREND ORDER. Both comparison modes
+      // ("recent vs prior halves", "last vs first point") are only meaningful on
+      // an ordered series, and element row order is not guaranteed — so sort by
+      // it here. Previously this was collected and ignored, which quietly
+      // computed both comparisons over an arbitrary order.
+      var pairs=[];
+      for (var i=0;i<vals.length;i++){
+        if (isNaN(vals[i])) continue;
+        pairs.push({ v: vals[i], k: dim ? dim[i] : i });
+      }
+      if (dim){
+        var numeric = pairs.every(function(p){ return p.k!=null && !isNaN(Number(p.k)); });
+        var dated   = !numeric && pairs.every(function(p){ return p.k!=null && !isNaN(Date.parse(p.k)); });
+        if (numeric)    pairs.sort(function(a,b){ return Number(a.k)-Number(b.k); });
+        else if (dated) pairs.sort(function(a,b){ return Date.parse(a.k)-Date.parse(b.k); });
+        // text dimension: no meaningful order, so preserve source order
+      }
+      var raw=pairs.map(function(p){ return p.v; });
       if (raw.length) series=raw;
     }
     render(cfg, (series&&series.length>1)?series:synth());

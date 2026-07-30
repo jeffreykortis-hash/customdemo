@@ -1549,7 +1549,10 @@ Layout rules:
 - Sigma normalizes by prepending `<?xml version="1.0" encoding="utf-8"?>`
   and a trailing newline on save.
 
-## Page-structure pattern (apply by default)
+## Page-structure pattern (the fallback when NO catalog layout has been chosen)
+
+Use this when the build hasn't picked a named layout. When it has, that layout's
+geometry wins — see `sigma-company-dashboard/reference/layouts.md`.
 
 Every page starts with a header bar container holding the page title text
 element + the filter controls. The body holds KPIs/charts (often in a

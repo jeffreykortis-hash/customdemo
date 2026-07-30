@@ -16,6 +16,20 @@ This skill covers proven patterns and architectural approaches for building Sigm
 
 ## The JSON Settings Pattern
 
+> **Reference implementation: `plugins/_scaffold/`.** Clone that rather than
+> re-deriving this from the prose below — it ships the deep-merge loader, the
+> edit-mode drawer, luminance-derived theming, direction-aware deltas and the
+> mandatory ResizeObserver already wired together. The prose here explains *why*
+> each piece is there.
+>
+> Two facts worth knowing before you design around this:
+> - `client.config.set()` performs a **shallow merge**, so writing `config`
+>   leaves your column bindings untouched.
+> - `PluginStyle` is `{ backgroundColor: string }` and nothing more — there is no
+>   workbook palette or font to inherit. Everything except the background has to
+>   come from this settings object, which is the main reason the pattern earns
+>   its keep.
+
 ### The Problem
 
 Sigma's editor panel (`configureEditorPanel`) provides basic controls — element selectors, column pickers, toggles, dropdowns, and text fields. But these controls have limited UI customization. For plugins that need rich configuration (color pickers, nested options, conditional settings, layout builders, etc.), the editor panel is too restrictive.

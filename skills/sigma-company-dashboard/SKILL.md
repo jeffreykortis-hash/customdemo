@@ -158,6 +158,15 @@ from `fetch_logo.py`.
   `Switch([ColorBy],…)`. Give each segmented control a default `value`.
 - **Stacked bar + labels:** `color:{by:"category",column,scheme:[…]}` + `stacking:"stacked"` +
   `dataLabel:{labels:"shown",anchor:"middle",fontSize}` (singular `dataLabel`).
+- **Layout — ASK before drafting page 1.** Six shapes are catalogued in
+  `reference/layouts.md` with a decision table and the exact question to put to the
+  user. State a recommendation *with its evidence*; `"recommended"` is a valid
+  answer so the fast path survives. If they don't answer, use the recommendation
+  and **say which one you used** — never silently. Record it at the top of the
+  generator as `LAYOUT = "<name>"` so a rebuild reproduces it. `command-center` is
+  the usual answer for a POV, but a write-back ask means `app-shell` and a
+  period/scenario tag column means `comparison-variance`.
+  **Merge this with the page-2 question below — three questions is the ceiling.**
 - **Interactive counterpart — ASK which pattern fits, don't default to one:** before
   building page 2, ask the user which of two interactive patterns the prospect needs
   (some are genuinely ambiguous — e.g. a retailer could plausibly want either):
@@ -195,18 +204,20 @@ this: `source:{connectionId, statement:<SQL>, kind:"sql"}`, columns reference
 `SELECT ... FROM TABLE(GENERATOR(ROWCOUNT=>N))` with `SEQ4()`/`SIN()`.
 
 ## Theme & the load-bearing color rule
-- Theme lives in top-level `themeOverrides` (`colors.highlight`, `colorOverrides`,
-  `categoricalScheme`, `fonts`). Set `categoricalScheme[0]="#FFFFFF"` so in-card
-  sparklines are white on gradient cards.
-- **Standalone `text` elements are theme-dark; a kpi-chart's `name` is NOT.** A `text`
-  element's `style.color` is ignored (renders `themeOverrides.colors.text`), so a colored
-  callout / AI box must be a **light-tint container** with default dark text — never a dark box.
-  BUT a **kpi-chart `name:{color}` IS honored** — use it for white KPI titles on gradient cards
-  (verified). Only a banner title over a gradient HEADER (no native-titled element there) needs a
-  baked-white SVG image. Use a **LIGHT canvas + dark/gradient accent cards + header**.
-- **A fully-dark canvas breaks Sigma's control dropdowns** (white popup + light
-  theme-text = invisible). Keep the canvas light; make hero/KPI-cards/plugin
-  panels the dark accents.
+Full theme reference — every `themeOverrides` key and what round-trips — lives in
+**`sigma-workbook-styling`**, which is authoritative. The command-center
+specialization of it:
+
+- Set `categoricalScheme[0]="#FFFFFF"` so in-card sparklines are white on the
+  gradient cards.
+- **LIGHT canvas + dark/gradient accent cards & header.** A fully-dark canvas
+  breaks control dropdowns (white popup + light theme-text = invisible).
+- **A `text` element's `style.color` is ignored** (it renders
+  `themeOverrides.colors.text`), so a colored callout / AI box must be a
+  **light-tint container** with default dark text — never a dark box. A
+  **kpi-chart `name:{color}` IS honored**, which is what makes white KPI titles
+  on gradient cards work. Only a banner title over the gradient HEADER — where no
+  natively-titled element exists — needs a baked-white SVG image.
 
 ## CallText AI summary (live LLM insight)
 A `text` element whose `body` is a `{{formula}}` — no `source` needed:
@@ -256,7 +267,10 @@ teammates); Sigma is HTTPS loading an HTTP-localhost iframe, which browsers perm
 a secure-context exception (blank panel ⇒ check that first). Keep verified plugin
 examples in `plugins/` (flight-timeline Gantt, territory choropleth, claims funnel).
 
-## Command-center layout — left column is a TABBED CONTAINER (current standard)
+## Layout `command-center` — left column is a TABBED CONTAINER
+
+The default recommendation for a company POV, and one of six shapes in
+`reference/layouts.md` — ask the user before assuming it.
 The left content column (bar/trend chart, the bespoke plugin, and the pivot detail
 tables) now goes in ONE `tabbed-container` — NOT stacked vertically. Typical 3 tabs:
 "Cost Trend" / "<Plugin concept>" / "Detail Tables" (the two pivots side-by-side in
@@ -291,6 +305,8 @@ or two side-by-side tables), so this risk never comes up on this page. See
 
 ## Files
 - `reference/api-cheatsheet.md` — verified element shapes + every gotcha. READ FIRST.
+- `reference/layouts.md` — the six-layout catalog, the decision table, and the exact
+  layout question to ask. Consult BEFORE drafting page 1.
 - `examples/build_company_command_center.py` — **THE canonical current-standard generator** (clone this).
   Gradient header + real white logo + **comparative native-title KPI cards (Current + Δ + Prior + sparkline)**
   + AI insight + Color-By/filters + bar + bespoke plugin full-width + side-by-side pivots + a scenario-modeler

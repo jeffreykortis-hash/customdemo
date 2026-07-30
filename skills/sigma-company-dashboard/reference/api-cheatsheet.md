@@ -44,6 +44,9 @@ and every `container` needs a matching `<GridContainer>` WITH nested children.
 element sourcing works** (a chart on page A can source a table on page B).
 
 ## The big gotchas
+- **Theme:** full `themeOverrides` reference (all keys verified round-tripping) is
+  in `sigma-workbook-styling` — the terse duplicates below are the ones that bite
+  most often during a command-center build.
 - **Text color = theme, not element.** `style.color` on text (and the kpi `name`)
   is ignored → renders `themeOverrides.colors.text`. White text on a dark surface
   must be a **data-URI SVG image**; a colored callout must be a **light-tint

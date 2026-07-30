@@ -41,7 +41,9 @@
     {name:'source',type:'element'},
     {name:'day',type:'column',source:'source',label:'Day of week'},
     {name:'hour',type:'column',source:'source',allowedTypes:['number','integer'],label:'Hour (0-23)'},
-    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Revenue'}
+    {name:'value',type:'column',source:'source',allowedTypes:['number','integer'],label:'Revenue'},
+    // How to combine multiple rows landing in the same (day, hour) cell.
+    {name:'aggregate',type:'dropdown',values:['Sum','Average','Max','Min'],defaultValue:'Sum',label:'Aggregate per cell'}
   ];
   if(client) client.config.configureEditorPanel(defs);
   function lerp(a,b,t){return a+(b-a)*t;}
@@ -91,10 +93,20 @@
   function recompute(){ var c=st.cfg||{},d=st.data;
     if(d&&c.value&&d[c.value]){
       var day=d[c.day]||[],hour=d[c.hour]||[],val=d[c.value]||[];
-      var m=[]; for(var i=0;i<7;i++){m[i]=[]; for(var j=0;j<24;j++)m[i][j]=0;}
+      var agg=(c.aggregate||'Sum');
+      var m=[],n=[]; for(var i=0;i<7;i++){m[i]=[];n[i]=[]; for(var j=0;j<24;j++){m[i][j]=0;n[i][j]=0;}}
       var any=false;
-      for(var i=0;i<val.length;i++){ var di=DAYS.indexOf(String(day[i])); var h=Math.round(Number(hour[i])); var v=Number(val[i])||0;
-        if(di>=0&&h>=0&&h<24){ m[di][h]=v; if(v>0)any=true; } }
+      // AGGREGATE across rows landing in the same (day, hour) cell. This used to
+      // be `m[di][h]=v` — last-write-wins — which silently discarded every row
+      // but the last whenever the source wasn't already pre-aggregated to one
+      // row per cell. A raw transaction feed lost almost all of its data.
+      for(var i=0;i<val.length;i++){ var di=DAYS.indexOf(String(day[i])); var h=Math.round(Number(hour[i])); var v=Number(val[i]);
+        if(di>=0&&h>=0&&h<24&&!isNaN(v)){
+          if(agg==='Max')      m[di][h] = n[di][h] ? Math.max(m[di][h],v) : v;
+          else if(agg==='Min') m[di][h] = n[di][h] ? Math.min(m[di][h],v) : v;
+          else                 m[di][h] += v;      // Sum, and the base for Average
+          n[di][h]++; if(v>0)any=true; } }
+      if(agg==='Average'){ for(var i=0;i<7;i++) for(var j=0;j<24;j++) if(n[i][j]) m[i][j]/=n[i][j]; }
       if(any){ draw(m); return; } }
     draw(synth());
   }

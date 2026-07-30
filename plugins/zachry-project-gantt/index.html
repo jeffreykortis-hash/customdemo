@@ -119,6 +119,10 @@
     recompute(); });
   } else { recompute(); }
   window.addEventListener('resize',function(){ recompute(); });
+  // Sigma resizes the plugin IFRAME without firing window.resize, so the
+  // listener above is not enough on its own — observe the container too.
+  if (window.ResizeObserver) new ResizeObserver(function(){ recompute(); })
+    .observe(document.body);
 })();
 </script>
 </body>
