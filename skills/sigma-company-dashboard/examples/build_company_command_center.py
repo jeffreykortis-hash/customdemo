@@ -16,14 +16,63 @@ else Sigma renders it black) -> company_white.svg (or set LOGO_SVG); data reshap
 (the 4 KPIs); a genuinely non-native plugin, registered (scripts/register_plugin.py), set PLUGIN_ID.
 
 Run: PLUGIN_ID=<id> LOGO_SVG=company_white.svg python3 build_company_command_center.py <BASE> <TOKEN> <CONN> <FOLDER>
+     ...optionally: --write-connection <id>   input tables need a WRITEBACK-enabled connection
+                    --ai "<conn>,<model>"     CallText pair; default is derived from the
+                                              read connection's type
+                    --no-ai                   skip the AI insight entirely
+
+CONNECTIONS: <CONN> is the READ connection (reshape queries, charts). Input tables on page 2
+need a connection with write access enabled; pass --write-connection when that differs. The
+script aborts rather than shipping a page 2 whose input tables silently do nothing.
 
 KPI STANDARD (do not regress): each card kpi-chart has a value column AND a comparison column
 (comparisonColumn + comparison display delta); the metric title is the kpi NATIVE name, color white.
 Never bake KPI titles as SVG images.
 """
 import json,sys,os,base64,urllib.request,urllib.error,xml.dom.minidom as _MD
-BASE,TOKEN,CONN,FOLDER=sys.argv[1:5]
-AICONN="SNOWFLAKE.CORTEX.COMPLETE"; CLOCK=os.environ.get("PLUGIN_ID","REPLACE_WITH_YOUR_PLUGIN_ID")
+
+def _args():
+    """Positional-compatible arg parsing. `prog BASE TOKEN CONN FOLDER` still works
+    exactly as before; the flags are additive."""
+    a=[x for x in sys.argv[1:]]; flags={}
+    for f in ("--write-connection","--ai"):
+        if f in a: i=a.index(f); flags[f]=a[i+1]; del a[i:i+2]
+    no_ai="--no-ai" in a
+    if no_ai: a.remove("--no-ai")
+    if len(a)<4:
+        sys.stderr.write("usage: build_company_command_center.py <BASE> <TOKEN> <READ_CONN> <FOLDER>"
+                         " [--write-connection <id>] [--ai '<conn>,<model>'] [--no-ai]\n"); sys.exit(2)
+    return a[0],a[1],a[2],a[3],flags.get("--write-connection"),flags.get("--ai"),no_ai
+
+BASE,TOKEN,CONN,FOLDER,_WCONN,_AI,NO_AI=_args()
+H={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"}
+
+def _conn_meta(cid):
+    """{type, writeAccess, name} for a connection, or {} if it can't be read."""
+    try:
+        r=urllib.request.Request(BASE+"/v2/connections?limit=200",headers=H)
+        for e in json.load(urllib.request.urlopen(r)).get("entries",[]):
+            if e.get("connectionId")==cid:
+                return {"type":e.get("type"),"writeAccess":e.get("writeAccess") is True,
+                        "name":e.get("name")}
+    except Exception: pass
+    return {}
+
+_RM=_conn_meta(CONN)
+# Input tables require write access; reads do not. Using the read connection for
+# them is the default and is usually WRONG on a client's org.
+WRITE_CONN=_WCONN or CONN
+_WM=_conn_meta(WRITE_CONN) if WRITE_CONN!=CONN else _RM
+
+# CallText pair by warehouse. Verified Databricks form seen in a real workbook:
+# CallText("ai_query","databricks-llama-4-maverick",...).
+_AI_BY_TYPE={"snowflake":("SNOWFLAKE.CORTEX.COMPLETE","CLAUDE-4-SONNET"),
+             "databricks":("ai_query","databricks-llama-4-maverick")}
+if _AI:
+    AICONN,AIMODEL=[s.strip() for s in _AI.split(",",1)]
+else:
+    AICONN,AIMODEL=_AI_BY_TYPE.get(_RM.get("type") or "",("SNOWFLAKE.CORTEX.COMPLETE","CLAUDE-4-SONNET"))
+CLOCK=os.environ.get("PLUGIN_ID","REPLACE_WITH_YOUR_PLUGIN_ID")
 H={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"}
 def b64(s): return base64.b64encode(s.encode()).decode()
 CUR={"kind":"number","formatString":"$.3~s","currencySymbol":"$","decimalSymbol":".","digitGroupingSymbol":",","digitGroupingSize":[3]}
@@ -147,12 +196,20 @@ for i,(elid,t,mf,fmt,tr) in enumerate(KDEFS):
     cur=mf.replace("§","Current Period"); pri=mf.replace("§","Prior Year")
     e,l=card(elid,"tbl",t,cur,pri,"Prior Year",fmt,KG[i],trend=tr,rowband="5 / 13"); kpis+=e; kpilay.append(l.replace("{col}",f"{1+i*6} / {1+(i+1)*6}"))
 
-ai_body=('{{ Replace(CallText("'+AICONN+'", "CLAUDE-4-SONNET", '
+ai_body=('{{ Replace(CallText("'+AICONN+'", "'+AIMODEL+'", '
  '"You are a marketplace analyst at DoorDash (categories: Restaurants, Grocery, Convenience, Alcohol, Retail, DashMart). '
  'In two concise sentences summarize the marketplace given Gross Order Value of $" '
  '& Text(Round(Sum(['+MF+'/GOV])/1000000000,1)) & "B, Revenue of $" '
  '& Text(Round(Sum(['+MF+'/Revenue])/1000000000,1)) & "B, and a blended take rate of " '
  '& Text(Round(Sum(['+MF+'/Revenue])/Sum(['+MF+'/GOV])*100,1)) & "%. Note the leading category and the daypart demand pattern."), \'"\', \'\') }}')
+if NO_AI:
+    # A wrong CallText connection/model string renders an ERROR on the customer's
+    # screen. When the org's pair is unknown, degrade to a computed summary
+    # rather than shipping a broken box.
+    ai_body=('{{ "Gross Order Value of $" & Text(Round(Sum(['+MF+'/GOV])/1000000000,1)) '
+             '& "B on revenue of $" & Text(Round(Sum(['+MF+'/Revenue])/1000000000,1)) '
+             '& "B, a blended take rate of " '
+             '& Text(Round(Sum(['+MF+'/Revenue])/Sum(['+MF+'/GOV])*100,1)) & "%." }}')
 ai_box={"id":"c-ai","kind":"container","style":dict(TINT)}
 ai_ic={"id":"ai-ic","kind":"image","url":"data:image/svg+xml;base64,"+b64('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="'+RED+'" stroke="'+RED+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'),"style":{"fit":"contain"}}
 ai_hd={"id":"ai-hd","kind":"text","body":"**AI insight**","verticalAlign":"middle","style":{"color":INK}}
@@ -251,7 +308,7 @@ sbase={"id":"sbase","kind":"table","name":"Category Base","visibleAsSource":True
  "columns":[{"id":"sb-cat2","formula":"[Custom SQL/CATEGORY]","name":"Category"},{"id":"sb-grp","formula":"[Custom SQL/GRP]","name":"Segment"},
             {"id":"sb-rev2","formula":"[Custom SQL/BASE_REV]","name":"Revenue","format":CUR},{"id":"sb-mar","formula":"[Custom SQL/BASE_MARGIN]","name":"Margin","format":PCT1}],
  "order":["sb-cat2","sb-grp","sb-rev2","sb-mar"]}
-scenarios={"id":"scenarios","kind":"input-table","source":{"kind":"empty","connectionId":CONN},"inputMode":"edit","name":"Scenarios",
+scenarios={"id":"scenarios","kind":"input-table","source":{"kind":"empty","connectionId":WRITE_CONN},"inputMode":"edit","name":"Scenarios",
  "columns":[{"id":"sc-name","type":"text","name":"Scenario Name"},{"id":"sc-status","type":"text","name":"Status","values":["Draft","Submitted","Approved"],"pills":"color-by-option"}]}
 spivot={"id":"spivot","kind":"pivot-table","name":"Scenario Pivot","visibleAsSource":True,
  "source":{"kind":"join","joins":[{"left":{"elementId":"sbase","kind":"table"},"right":{"elementId":"scenarios","kind":"table"},"columns":[{"left":"1","right":"1"}],"joinType":"left-outer"}],"primarySource":{"elementId":"sbase","kind":"table"}},
@@ -279,7 +336,7 @@ book2={"id":"book2","kind":"table","name":"Book","visibleAsSource":True,
             {"id":"bb-prev","formula":"[Assumptions/Projected Revenue]","name":"Projected Revenue","format":CUR},
             {"id":"bb-pc","formula":"[Assumptions/Projected Contribution]","name":"Projected Contribution","format":CUR}],
  "order":["bb-scen","bb-cat","bb-brev","bb-bc","bb-prev","bb-pc"]}
-subs={"id":"subs","kind":"input-table","source":{"kind":"empty","connectionId":CONN},"inputMode":"edit","name":"Submissions",
+subs={"id":"subs","kind":"input-table","source":{"kind":"empty","connectionId":WRITE_CONN},"inputMode":"edit","name":"Submissions",
  "columns":[{"id":"su-scen","type":"text","name":"Scenario"},{"id":"su-status","type":"text","name":"Status","values":["Submitted","Approved"],"pills":"color-by-option"}]}
 selctrl={"kind":"control","controlId":"scenarioSelect","id":"ctrl-sel","name":"Active scenario","controlType":"list","selectionMode":"single","mode":"include","value":"Base Case",
  "filters":[{"source":{"kind":"table","elementId":"book2"},"columnId":"bb-scen"}],
@@ -368,6 +425,19 @@ def post(s):
     wid=[l.split()[-1] for l in resp.splitlines() if "workbookId" in l]
     url=json.loads(urllib.request.urlopen(urllib.request.Request(BASE+f"/v2/workbooks/{wid[0]}",headers=H),timeout=30).read().decode()).get("url") if wid else None
     return ("success: true" in resp), url, resp
+# Page 2 is entirely input tables. On a connection without write access they are
+# accepted by the API and then silently do nothing, so refuse to ship that.
+if not _WM.get("writeAccess", False):
+    _who=_WM.get("name") or WRITE_CONN
+    print(f"ABORT: connection '{_who}' does not have write access enabled, so the")
+    print("  Scenario Modeler's input tables would be created but never work.")
+    print("  Fix one of:")
+    print("   - pass --write-connection <id> for a write-enabled connection")
+    print("     (scripts/api/list-connections.sh --writable lists them), or")
+    print("   - have an admin enable it: Administration > Connections > Edit >")
+    print("     Enable write access, plus a write destination.")
+    sys.exit(1)
+
 done=False
 for mode in ["tool","basic","none"]:
     spec=build(mode)

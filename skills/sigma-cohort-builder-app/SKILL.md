@@ -65,6 +65,13 @@ ambiguous, e.g. a retailer could plausibly want either):
    that ID isn't defined anywhere in the GET-back spec and can't be replicated —
    inline the real effects instead).
 
+   **⚠ GOTCHA — the saved-cohorts input table needs a WRITEBACK-ENABLED
+   connection.** Because Save is a real write, this whole skill is dead on a
+   read-only connection: filters and KPIs work, the agent runs, and Save quietly
+   does nothing. Verify with `scripts/api/list-connections.sh --writable` before
+   building, and see `sigma-input-table-app` for the full explanation — write
+   access is an Admin-only toggle you cannot set from code.
+
 ## Non-negotiable defaults — build these every time
 
 1. **Snapshot a WIDE set of scalar numbers at Save time — never try to serialize the

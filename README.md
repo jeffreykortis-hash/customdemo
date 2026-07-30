@@ -12,10 +12,12 @@ in any project.
 It's the flagship, end-to-end builder and it *composes* the others for you (layout, styling, conventions, write-back). Everything else is a building block or a different deliverable:
 
 - ⭐ **`sigma-company-dashboard`** — full branded company workbook: real fetched logo, comparative KPI cards, live AI insight, a **bespoke plugin**, and a scenario-modeler page. **This is the front door.**
+- **`sigma-byod-data-model`** — the client is bringing **their own data**. Profiles their Snowflake/Databricks table and publishes a real data model the workbook sources from. The flagship calls this first when the answer to "sample data or your own table?" is the latter.
 - `sigma-input-table-app` — a standalone data app / scenario modeler / forecasting / write-back tool (only when *that* is the whole ask).
+- `sigma-cohort-builder-app` — an agent-driven population segmentation app (save and compare cohorts).
 - `branded-dashboard-format`, `sigma-workbook-styling`, `sigma-workbook-conventions` — building blocks the flagship uses; call directly only for a specific sub-task.
 - `sigma-plugin-development`, `sigma-plugin-patterns` — for building a plugin itself.
-- `sigma-embed-portal` — a Netlify embed site. `sigma-use-cases` — a use-case slide deck. `sigma-app-design` — a design doc/PRD.
+- `sigma-embed-portal` — a Netlify embed site.
 
 > ⚠️ **Common mistake:** driving a company build from `branded-dashboard-format` + the building blocks (naming them in your prompt). That produces a *generic* dashboard — no fetched logo, no bespoke plugin. Just say: **"Use `sigma-company-dashboard` to build a Sigma workbook for [Company]."**
 
@@ -24,6 +26,8 @@ It's the flagship, end-to-end builder and it *composes* the others for you (layo
 | Skill | What it does | Dependencies |
 |---|---|---|
 | ⭐ **sigma-company-dashboard** | **START HERE.** End-to-end: given a company, reshape sample data via custom SQL → brand-gradient header + **real fetched logo** → **comparative** gradient KPI cards → live CallText AI insight, charts, filters → a **bespoke domain plugin** (localhost-hosted + registered) → a scenario-modeler page with agents. Worked examples: JPMC, DoorDash, Fiserv, Zachry. Ships the verified current-API cheatsheet + canonical generator (`build_company_command_center.py`). | Uses `scripts/`, staging API, local plugin host. |
+| **sigma-byod-data-model** | **Bring your own data.** Profile a client's own warehouse table (types, cardinality, null rates, date range, candidate roles), agree a shaping, then publish a real Sigma **data model as code** (`POST /v2/dataModels/spec`) that workbooks source from. Emits **no warehouse SQL** — `warehouse-table` sourcing plus Sigma-formula shaping, verified identical on Snowflake and Databricks. Owns the read-vs-writeback connection split. | Uses `scripts/profile-table.py`, `scripts/validate-datamodel-spec.py`, `scripts/api/publish-datamodel.sh`. |
+| **sigma-cohort-builder-app** | Agent-driven population segmentation — filter a population to a named cohort, save it, compare saved cohorts. One agent tool per filter dimension. | Staging API; needs a writeback-enabled connection. |
 | **sigma-input-table-app** | Interactive counterpart to the dashboard skill — build a Sigma **data app** from code: input tables + buttons + action sequences + modals (scenario modelers, forecasting/planning, write-back, submit→approve). Encodes the verified beta workbook-spec shapes (input tables, cross-joins, linked input tables, modal pages, button effects) + the hard limits/workarounds + a full working generator. | Staging API (beta `create-workbook-spec`). |
 | **sigma-workbook-conventions** | Authoring/editing/reviewing Sigma workbook & data-model JSON specs — input resolution, naming, layout, control catalog, ID semantics, and the POST-time gotchas. The flagship skill. | Uses `scripts/` (see [Working with the scripts](#working-with-the-scripts)); pairs with the upstream `sigma-api` / `sigma-data-models` skills. |
 | **sigma-workbook-styling** | The visual-craft layer — containers as design blocks, images/logos, buttons & actions, and color/spacing/typography to make a workbook look *designed*, not just correct. Honest about what round-trips via spec vs what needs UI finishing. | Pairs with `sigma-workbook-conventions` (mechanics) and `branded-dashboard-format` (brand). |
@@ -115,7 +119,9 @@ element** (`/v2/workbooks/{id}/export` → poll `/v2/query/{qid}/download`) to c
 
 | Exemplar | Shows |
 |---|---|
-| `skills/sigma-company-dashboard/examples/build_cava.py` | **THE reference build.** Two pages (command center + scenario modeler) on light surfaces: comparative **gradient KPI cards with native, colorable titles** (no SVG-title hacks), a CallText AI insight, control-driven `Switch`/`DateTrunc` filters, a stacked bar w/ drill fields, **side-by-side pivots**, a **bespoke data-bound plugin in a container below the bar**, and **two agents** (a read-only analyst + a Scenario Copilot with an insert-rows tool). Clone it; swap brand + reshape SQL + AI prompt + plugin. |
+| `skills/sigma-company-dashboard/examples/build_company_command_center.py` | **THE canonical generator — clone THIS one.** Current standard, including the tabbed left-column layout and the read-vs-writeback connection split. |
+| `skills/sigma-byod-data-model/examples/build_byod_data_model.py` | The BYOD generator: a `profile-table.py` profile + role flags → a publishable data-model spec. |
+| `skills/sigma-company-dashboard/examples/build_cava.py` | Kept for reference; **predates several current conventions** (notably the tabbed layout) — not the clone target. Two pages (command center + scenario modeler) on light surfaces: comparative **gradient KPI cards with native, colorable titles** (no SVG-title hacks), a CallText AI insight, control-driven `Switch`/`DateTrunc` filters, a stacked bar w/ drill fields, **side-by-side pivots**, a **bespoke data-bound plugin in a container below the bar**, and **two agents** (a read-only analyst + a Scenario Copilot with an insert-rows tool). Clone it; swap brand + reshape SQL + AI prompt + plugin. |
 | `plugins/cava-daypart/` | The matching **bespoke plugin** — a 7×24 day-part heatmap (`@sigmacomputing/plugin` SDK, synthetic fallback). Register via `POST /v2/plugins` → `pluginId`, host it, embed bound to a synthetic operational source. |
 
 **Defaults these encode** (learned the hard way — see each SKILL.md + the

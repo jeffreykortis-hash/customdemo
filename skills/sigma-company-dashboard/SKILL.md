@@ -24,9 +24,26 @@ description: >-
 Given a company name, produce a polished branded Sigma workbook + a domain plugin,
 entirely from code. Proven across multiple retail, CPG, and tech companies.
 
+## FIRST QUESTION — sample data, or the client's own?
+Before anything else, ask: **"Should this run on sample data reshaped into your
+domain, or on your own warehouse table?"**
+
+- **Sample data** (the default for a POV/demo) → continue with move 1 below.
+- **Their own table** ("use our data", "point it at `<DB>.<SCHEMA>.<TABLE>`") →
+  use **`sigma-byod-data-model`** FIRST. It profiles the table, agrees a shaping,
+  and publishes a real data model. Then move 1 is replaced by "source the model":
+  `source:{kind:"data-model", dataModelId, elementId}`, with columns as
+  `[<ElementName>/<Column Name>]`. Moves 2–4 are unchanged.
+
+Also settle connections up front — a READ connection, and, only if you're building
+page 2, a **writeback-enabled** one for its input tables. See the writeback gotcha
+in `sigma-input-table-app`; `scripts/api/list-connections.sh --writable` lists the
+eligible ones. The generator hard-aborts rather than shipping a dead page 2.
+
 ## The flow (four moves)
 1. **Data model** — reshape a sample warehouse table (e.g. Big Buys POS) into the
-   company's domain via **custom SQL** so the data "makes sense."
+   company's domain via **custom SQL** so the data "makes sense." (BYO data instead?
+   See above — `sigma-byod-data-model` produces the model and you skip the SQL.)
 2. **Themed workbook** — company theme (colors, logo, hero), gradient KPI cards,
    a **CallText AI summary**, charts, laid out cleanly. POST via the spec API.
 3. **Domain plugin** — a bespoke, *operational* visual a person at that company
@@ -153,7 +170,17 @@ from `fetch_logo.py`.
   "Both" is a valid answer too (one page each, on top of the same dashboard page 1).
   Whichever is chosen still gets the SAME brand theming/logo/header conventions as page 1.
 
-## Data reshape pattern (Snowflake)
+## Data reshape pattern — SAMPLE DATA ONLY, and Snowflake-only
+This whole section applies to the **sample-data** path. The SQL below is
+Snowflake-specific (`GET`/`ARRAY_CONSTRUCT`, `HASH`, `::string`, `DATEADD`,
+`GENERATOR`/`SEQ4`) and **fails on Databricks** — verified: `DATE_TRUNC` alone
+errors with `INVALID_PARAMETER_VALUE.DATETIME_UNIT`.
+
+For a client's own data do NOT port this SQL. Use `sigma-byod-data-model`, which
+sources `warehouse-table` and does all shaping in Sigma formulas — the same spec
+then works unchanged on Snowflake and Databricks. There is nothing to reshape on
+real data anyway: the labels are already real.
+
 Map a sample column onto domain labels deterministically:
 ```sql
 GET(ARRAY_CONSTRUCT('Data Center','Gaming','Automotive','OEM & Other'),

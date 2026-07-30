@@ -95,6 +95,24 @@ dashboards**. Don't put a heavy dark gradient theme on an input-table app — it
 2. **Scenario Names** — an EMPTY `input-table` (`source:{kind:"empty",connectionId}`,
    `inputMode:"edit"`) with a `text` name column + a Status column (`values:[...]` +
    `pills:"color-by-option"`).
+
+   **⚠ GOTCHA — that `connectionId` MUST point at a WRITEBACK-ENABLED connection.**
+   Input tables (and warehouse views, materialization, CSV upload) require write
+   access on the connection; plain reads do not. A read-only connection produces
+   an app whose charts render perfectly and whose input tables silently never
+   persist anything — there is no useful error, so this reads as "the app is
+   broken" long after you've shipped it.
+
+   Check before you build: `scripts/api/list-connections.sh --writable` lists
+   only connections with `writeAccess: true` and a `writebacks` destination. In
+   one real org just **16 of 52** connections qualified, so assume the client's
+   does not until you look.
+
+   You cannot fix this from code — write access is an **Admin-only** toggle
+   (Administration → Connections → Edit → **Enable write access**, plus a write
+   destination: a schema on Snowflake, a catalog + schema on Databricks). If
+   it's off, say so and name the toggle rather than working around it. The read
+   connection and the writeback connection may legitimately be different ones.
 3. **Pivot** — `pivot-table`, `source:{kind:"join", joins:[{left:base,right:scenarios,
    columns:[{left:"1",right:"1"}],joinType:"left-outer"}], primarySource:base}`,
    `rowsBy:[<base dim only>]`, `values:[Sum(measure)]`, scenario as a plain column.
