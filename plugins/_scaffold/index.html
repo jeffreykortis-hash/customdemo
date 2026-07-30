@@ -209,6 +209,7 @@
     var s = state.settings, rows = state.rows;
     if (!state.hasSource)  return message('Select a source element in the editor panel.');
     if (!state.hasColumns) return message('Bind the Label and Value columns.');
+    if (state.loading)     return message('Loading…');
     if (!rows.length)      return message(s.empty.message);
     message('');
     var box = document.getElementById('viz');
@@ -246,12 +247,18 @@
     if (!edit) document.getElementById('drawer').classList.remove('open');
 
     if (client && state.hasSource && state.hasColumns) {
+      // getElementData is async. Without this the element is BLANK between the
+      // config arriving and the data landing — only show it on a cold load so a
+      // refilter doesn't flicker.
+      if (!state.rows.length) { state.loading = true; repaint(); }
       client.elements.getElementData(cfg.source).then(function (data) {
         var L = data[cfg.label] || [], V = data[cfg.value] || [];
         state.rows = L.map(function (l, i) { return { label:l, value:V[i] }; });
-        repaint();
-      }).catch(function (e) { console.warn(e); state.rows = []; repaint(); });
-    } else { state.rows = []; repaint(); }
+        state.loading = false; repaint();
+      }).catch(function (e) {
+        console.warn(e); state.rows = []; state.loading = false; repaint();
+      });
+    } else { state.rows = []; state.loading = false; repaint(); }
   }
 
   // Settings drawer

@@ -92,6 +92,21 @@ site then deploy with an explicit `--site`.
 - `/v2/files` type filter is **`data-model`** (hyphenated); legacy uploads are
   type `dataset`. A model sourced from an uploaded CSV can't `get-spec` at all.
 
+## Plugin config from the spec (verified 2026-07-30)
+Brand a plugin entirely from the generator — no editor-panel clicking:
+```python
+{"kind":"plugin","pluginId":PID,"config":{
+   "source":{"kind":"element","elementId":"tbl"},
+   "label":"c-label", "value":"c-value",          # BARE columnId strings
+   "config": json.dumps(settings),                 # whole look as one JSON string
+   "editMode":"false"}}                            # note: the STRING "false"
+```
+Verified round-tripping POST → GET **byte-identical**, including a ~200-char
+escaped JSON string: `pluginId`, the bare column bindings, the `source` object,
+`editMode` as a string, and the settings JSON (which re-parses to the same
+object). Treat **all** plugin config values as strings at the spec layer.
+Reference implementation: `plugins/_scaffold/`.
+
 ## Writeback (verified 2026-07-30)
 `/v2/connections` exposes **`writeAccess`** (`true`/`null`) and **`writebacks`**
 (`[{database, schema}]`). Input tables, warehouse views, materialization and CSV
