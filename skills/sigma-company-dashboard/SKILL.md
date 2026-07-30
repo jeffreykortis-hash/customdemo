@@ -15,6 +15,10 @@ description: >-
   a "branded dashboard for [company]", "reshape sample data into [industry]", or a
   personalized Sigma demo. Driving a company build from the building blocks instead
   yields a generic dashboard with no fetched logo and no bespoke plugin — use this.
+  If the user brings ARTIFACTS instead of answers — screenshots or a PDF of their
+  EXISTING dashboard, a CALL TRANSCRIPT or discovery notes describing a process —
+  run **sigma-discovery-brief** FIRST to turn them into a provenanced `brief.json`,
+  then build from that instead of interviewing them.
   Encodes the VERIFIED current-API element shapes + masked-error gotchas; always clone
   shapes from a recent GET-back, not from stale docs.
 ---
@@ -24,9 +28,30 @@ description: >-
 Given a company name, produce a polished branded Sigma workbook + a domain plugin,
 entirely from code. Proven across multiple retail, CPG, and tech companies.
 
-## FIRST QUESTION — sample data, or the client's own?
+## MOVE ZERO — did they hand you artifacts instead of answers?
+If there are **screenshots of an existing dashboard** (Tableau/Power BI/Looker/Excel/
+Sigma), a **PDF export**, a **call transcript**, or **discovery notes** — or the user
+attaches images to the build request — run **`sigma-discovery-brief`** before asking
+anything. It triages the files, reads them, and produces a `brief.json` whose every
+decision carries a provenance locator, gated by a human readout. Then build **from the
+brief**: `decisions.layout`, `decisions.kpis`, `decisions.pluginConcept`,
+`decisions.page2Pattern` and `decisions.dataSourcing` are exactly the answers the
+questions below would have asked for.
+
+A brief **replaces** those questions rather than adding to them — ask only the residue
+it lists in `needsInput` (usually grain, comparison basis, metric definitions, refresh
+window), in one message. Three questions is still the ceiling. Two rules carry over
+into the build: **screenshot numbers are never reproduced** (take the shape, generate
+the values), and a **screenshot of a working dashboard is not data access** — a
+recreate-this ask with no connection is the synthetic path.
+
+No artifacts? Skip to the first question.
+
+## FIRST QUESTION — sample data, their own table, or synthetic?
 Before anything else, ask: **"Should this run on sample data reshaped into your
-domain, or on your own warehouse table?"**
+domain, on your own warehouse table, or on a synthetic dataset we generate from
+a schema?"** The discriminating question is *is there a real table we're allowed
+to point at?*
 
 - **Sample data** (the default for a POV/demo) → continue with move 1 below.
 - **Their own table** ("use our data", "point it at `<DB>.<SCHEMA>.<TABLE>`") →
@@ -34,6 +59,16 @@ domain, or on your own warehouse table?"**
   and publishes a real data model. Then move 1 is replaced by "source the model":
   `source:{kind:"data-model", dataModelId, elementId}`, with columns as
   `[<ElementName>/<Column Name>]`. Moves 2–4 are unchanged.
+- **No data at all** ("make up the data", "generate synthetic <industry> data",
+  "we don't have a table yet", "here's our schema, mock it up", "build a star
+  schema") → use **`sigma-synthetic-star-model`** FIRST. It fabricates one SQL
+  statement per table — a fact plus its dimensions — publishes them as ONE
+  multi-element data model wired with `relationships`, proves the joins actually
+  join, and labels everything SYNTHETIC. Then move 1 becomes "source the FACT
+  element": `source:{kind:"data-model", dataModelId, elementId:<fact>}`, columns
+  as `[<Fact Element Name>/<Column Name>]` — reference the fact's own columns
+  only, never a dimension's. Moves 2–4 are unchanged EXCEPT that the header must
+  carry a visible "Synthetic demo data" banner.
 
 Also settle connections up front — a READ connection, and, only if you're building
 page 2, a **writeback-enabled** one for its input tables. See the writeback gotcha
@@ -42,8 +77,9 @@ eligible ones. The generator hard-aborts rather than shipping a dead page 2.
 
 ## The flow (four moves)
 1. **Data model** — reshape a sample warehouse table (e.g. Big Buys POS) into the
-   company's domain via **custom SQL** so the data "makes sense." (BYO data instead?
-   See above — `sigma-byod-data-model` produces the model and you skip the SQL.)
+   company's domain via **custom SQL** so the data "makes sense." (BYO data, or no data
+   at all? See above — `sigma-byod-data-model` and `sigma-synthetic-star-model`
+   each produce a data model, and this move becomes "source the element".)
 2. **Themed workbook** — company theme (colors, logo, hero), gradient KPI cards,
    a **CallText AI summary**, charts, laid out cleanly. POST via the spec API.
 3. **Domain plugin** — a bespoke, *operational* visual a person at that company
@@ -180,6 +216,7 @@ from `fetch_logo.py`.
   Whichever is chosen still gets the SAME brand theming/logo/header conventions as page 1.
 
 ## Data reshape pattern — SAMPLE DATA ONLY, and Snowflake-only
+*(the synthetic-star generator also emits SQL, but portably — see the note below)*
 This whole section applies to the **sample-data** path. The SQL below is
 Snowflake-specific (`GET`/`ARRAY_CONSTRUCT`, `HASH`, `::string`, `DATEADD`,
 `GENERATOR`/`SEQ4`) and **fails on Databricks** — verified: `DATE_TRUNC` alone
@@ -189,6 +226,12 @@ For a client's own data do NOT port this SQL. Use `sigma-byod-data-model`, which
 sources `warehouse-table` and does all shaping in Sigma formulas — the same spec
 then works unchanged on Snowflake and Databricks. There is nothing to reshape on
 real data anyway: the labels are already real.
+
+**⚠ The dialect constraint applies to `sigma-synthetic-star-model` too** — unlike
+BYOD, the synthetic path DOES emit real warehouse SQL, because fabricating rows
+needs a dialect-specific row source. It handles this by keeping that surface to
+exactly two expressions (row source, day→date) and generating everything else
+from portable arithmetic. BYOD is the only path that emits no SQL at all.
 
 Map a sample column onto domain labels deterministically:
 ```sql

@@ -8,7 +8,9 @@ description: >-
   source with `source:{kind:"data-model",dataModelId,elementId}`. For a full
   branded company dashboard / POV / demo, use **sigma-company-dashboard** — it
   calls THIS skill first whenever the client brings their own connection and
-  table instead of the sample data. Use this DIRECTLY when the ask is "use OUR
+  table instead of the sample data. If there is NO table at all — nothing to
+  point at, or a schema but no data — use **sigma-synthetic-star-model**, which
+  fabricates a star schema from a DDL or schema file. Use this DIRECTLY when the ask is "use OUR
   data", "point it at my own Snowflake / Databricks table", "point it at
   <DB>.<SCHEMA>.<TABLE>", "profile this dataset", "what's in this table", "build a
   data model / semantic layer from this table", or "bring your own data". Encodes

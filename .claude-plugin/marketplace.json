@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Sigma Computing skills for Claude Code — workbooks, data models, dashboards, embeds, and plugins.",
-    "version": "0.13.0"
+    "version": "0.15.0"
   },
   "plugins": [
     {
       "name": "customdemo",
       "source": "./",
-      "description": "Sigma Computing skill collection: bring-your-own-data profiling and data models as code, branded workbook builder, layout catalog, workbook conventions and styling, embed portals, and plugin development."
+      "description": "Sigma Computing skill collection: discovery-artifact intake (screenshots + call transcripts → a build brief), bring-your-own-data profiling and data models as code, synthetic star schemas, branded workbook builder, layout catalog, workbook conventions and styling, embed portals, and plugin development."
     }
   ]
 }

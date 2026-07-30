@@ -152,6 +152,91 @@ same silent synthetic fallback):
 
 Reference implementation with all of this wired: `plugins/_scaffold/`.
 
+## ⚠ SCHEMA DRIFT: images moved from `url` to `source` (verified 2026-07-30)
+The canonical generator could not POST **at all**, on any data path, until this
+was found. Both shapes below are stale everywhere in this repo's captured
+`examples/*.json`, because the API changed after those were saved.
+
+| | was | now |
+|---|---|---|
+| `image` element | `{kind:"image", url:"…"}` | `{kind:"image", source:{kind:"url", url:"…"}, style}` |
+| `backgroundImage` | `{url:"…", style}` | `{source:{kind:"url", url:"…"}, style}` |
+
+The old image shape fails as the masked **`Invalid kind: "image"`** — which, per
+the rule at the top of this file, means a FIELD is wrong, not the kind. Only
+`kind:"url"` is accepted inside `source`; `static`/`link`/`image`/`manual` are
+all rejected outright.
+
+**`backgroundImage` additionally 500s server-side** even with the correct shape —
+deterministic across retries, on both data-URI and https urls. So the gradient
+header and gradient KPI cards cannot currently be built via the API at all.
+`build_company_command_center.py` now normalizes image shapes automatically and
+falls back to a flat `backgroundColor` when the background image is rejected,
+logging which path it took. Re-test with images once the endpoint is fixed.
+
+## Sourcing a dashboard from a DATA MODEL (verified 2026-07-30)
+`build_company_command_center.py --data-model <dataModelId>:<elementId>` swaps the
+base table from custom SQL to `source:{kind:"data-model", dataModelId, elementId}`
+and remaps the model's columns onto the NINE display names the layout depends on:
+`Date · Month · Period Name · Category · Subcategory · Region · Order · GOV ·
+Revenue`. Every downstream formula references those names, so nothing else in the
+generator changes. This is what makes the BYOD and synthetic paths turnkey rather
+than hand-authored.
+
+Both model-producing skills emit `Month` and `Period Name` so the comparative KPI
+cards work; without a `Period Name` the predicate degrades to a tautology and the
+cards show totals with a 0% delta (the generator warns).
+
+## Multi-element star schemas + SQL-sourced data models (verified 2026-07-30)
+Probed live on papercranestaging, Snowflake AND Databricks. All green:
+
+- **`source:{kind:"sql", connectionId, statement}` works on a DATA MODEL element**, not
+  just a workbook. Columns passthrough as `[Custom SQL/<ALIAS>]`. This is what lets a
+  data model exist with **no source table at all** — the basis of synthetic data.
+- **One data model can hold MULTIPLE elements** in `pages[0].elements[]`, POSTed in one call.
+- **`relationships` round-trip intact.** They live ON a table element (not page/model level):
+  `{id, targetElementId, keys:[{sourceColumnId,targetColumnId}], name?}`. Both elements must
+  be on the same page. Verified via `get-spec` — submitted and returned are identical.
+- **Element AND column ids are preserved**, not remapped. (Upstream `sigma-data-models`
+  `crud.md` claims they're remapped — that is wrong for this endpoint. Resolve by name
+  anyway if you want to be safe.)
+- **Top-level model `description` is accepted** and round-trips.
+- **Constant-literal columns work**: `"formula": "\"SYNTHETIC\""` → type `text`,
+  `"formula": "True"` → type `boolean`. Useful as provenance markers.
+
+**⚠ Column ids are NOT unique across elements.** A live 16-element model has the same
+column id `86NVcne4Vt` on two different elements. Since relationship keys resolve by id,
+**always prefix column ids per element** (`f-*`, `ds-*`, `dp-*`).
+
+**⚠ A join on mismatched key types 502s the server** — not a clean error. Check both
+key column types via `mcp-describe.sh datamodel-element` before relying on a relationship.
+
+### Proving a star actually joins, headlessly
+`scripts/api/mcp-query.sh datamodel <id> "<postgres sql>"` runs SQL across elements:
+`FROM "datamodel"."<elementId>"`, columns by **column id**. This is the only headless way
+to prove relationships produce rows. The four numbers worth asserting per relationship:
+`joined > 0` · `dim_rows == dim_keys` (**duplicate dimension keys silently FAN OUT the
+fact and multiply every measure** — a perfect-looking dashboard with 3× revenue) ·
+`joined == fact_rows` · key types in the same family.
+
+### Dialect: generating rows from nothing
+| | Snowflake | Databricks |
+|---|---|---|
+| Row source | `SELECT SEQ4() i FROM TABLE(GENERATOR(ROWCOUNT=>N))` | `SELECT id AS i FROM range(0,N)` |
+| Day offset → date | `DATEADD('day', n, DATE '…')` | `DATE_ADD(DATE '…', n)` |
+
+**Both verified executing through Sigma's custom-SQL wrapping** — a table-valued function
+in `FROM` survives it. Everything else needed is portable across both:
+`CASE · MOD · FLOOR · ABS · SIN · EXP · POWER · ROUND · GREATEST · LEAST · CONCAT · LPAD ·
+CAST(x AS STRING|INT)`. Avoid `DATE_TRUNC` (the known Databricks failure), arrays,
+`HASH()`, `::`, `||`, `CURRENT_DATE()`, `PI()` — generate at the target grain and let
+Sigma's dialect-free `DateTrunc()` formula do the rest.
+
+**⚠ Weighted categoricals: use `MOD(i*stride, N)`, NOT `MOD(i*stride, 1000)`.** With a
+stride coprime to N the residue is a permutation of `0..N-1`, so a 45/35/20 split lands
+exactly at any row count. The fixed-1000 form drifts badly at low N — verified: a
+requested 45/35/20 came out **58/29/13** at N=120.
+
 ## Writeback (verified 2026-07-30)
 `/v2/connections` exposes **`writeAccess`** (`true`/`null`) and **`writebacks`**
 (`[{database, schema}]`). Input tables, warehouse views, materialization and CSV

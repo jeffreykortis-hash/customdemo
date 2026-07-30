@@ -47,6 +47,13 @@ CHECKS = [
     "no-timeline-direction",
     "timeline-refs-resolve",
     "no-self-reference",
+    # Star-schema checks. Every one is a NO-OP on a spec with no relationships,
+    # so single-element BYOD specs are unaffected.
+    "no-duplicate-element-names",
+    "relationship-targets-resolve",
+    "relationship-keys-resolve",
+    "relationship-key-ids-unambiguous",
+    "no-orphan-element",
 ]
 
 # Prefixes that are legitimate on the left of a `/` in a bracket reference but
@@ -218,6 +225,131 @@ def issues_self_reference(spec: dict) -> list[str]:
     return issues
 
 
+
+# --------------------------------------------------------------------------
+# Star-schema checks
+# --------------------------------------------------------------------------
+def _has_relationships(spec: dict) -> bool:
+    return any(el.get("relationships") for _, _, el in _elements(spec))
+
+
+def issues_duplicate_element_names(spec: dict) -> list[str]:
+    """An element's `name` is the formula prefix a WORKBOOK uses to reach its
+    columns (`[<ElementName>/<Col>]`). Two elements sharing a name makes that
+    reference ambiguous."""
+    issues, seen = [], {}
+    for pi, ei, el in _elements(spec):
+        name = el.get("name")
+        if not name:
+            continue
+        if name in seen:
+            issues.append(
+                f"pages[{pi}].elements[{ei}] ({el.get('id')}): element name {name!r} "
+                f"is already used by {seen[name]}. The element name is the prefix a "
+                "workbook uses to reference its columns, so this is ambiguous.")
+        else:
+            seen[name] = el.get("id")
+    return issues
+
+
+def issues_relationship_targets(spec: dict) -> list[str]:
+    issues = []
+    for pi, page in enumerate(spec.get("pages", []) or []):
+        ids = {el.get("id") for el in page.get("elements", []) or []}
+        for ei, el in enumerate(page.get("elements", []) or []):
+            for ri, rel in enumerate(el.get("relationships") or []):
+                tgt = rel.get("targetElementId")
+                where = (f"pages[{pi}].elements[{ei}].relationships[{ri}] "
+                         f"({rel.get('id')})")
+                if not tgt:
+                    issues.append(f"{where}: missing targetElementId.")
+                elif tgt == el.get("id"):
+                    issues.append(f"{where}: targets its own element.")
+                elif tgt not in ids:
+                    issues.append(
+                        f"{where}: targetElementId {tgt!r} is not an element on this "
+                        "page. Both ends of a relationship must be on the same page.")
+    return issues
+
+
+def issues_relationship_keys(spec: dict) -> list[str]:
+    """Source keys resolve on the CARRYING element, target keys on the TARGET —
+    the two sides resolve against different elements."""
+    issues = []
+    for pi, page in enumerate(spec.get("pages", []) or []):
+        by_id = {el.get("id"): el for el in page.get("elements", []) or []}
+        cols = {eid: {c.get("id") for c in (el.get("columns") or [])}
+                for eid, el in by_id.items()}
+        for ei, el in enumerate(page.get("elements", []) or []):
+            for ri, rel in enumerate(el.get("relationships") or []):
+                where = (f"pages[{pi}].elements[{ei}].relationships[{ri}] "
+                         f"({rel.get('id')})")
+                keys = rel.get("keys") or []
+                if not keys:
+                    issues.append(f"{where}: `keys` is empty — nothing to join on.")
+                    continue
+                tgt = rel.get("targetElementId")
+                for ki, k in enumerate(keys):
+                    src_id, tgt_id = k.get("sourceColumnId"), k.get("targetColumnId")
+                    if src_id not in cols.get(el.get("id"), set()):
+                        issues.append(
+                            f"{where}.keys[{ki}]: sourceColumnId {src_id!r} is not a "
+                            f"column on {el.get('id')!r} (the element carrying it).")
+                    if tgt in cols and tgt_id not in cols[tgt]:
+                        issues.append(
+                            f"{where}.keys[{ki}]: targetColumnId {tgt_id!r} is not a "
+                            f"column on the target element {tgt!r}.")
+    return issues
+
+
+def issues_relationship_key_ids_unambiguous(spec: dict) -> list[str]:
+    """Column ids are NOT unique across elements in Sigma — a live 16-element
+    model reuses the same id on two elements. Relationship keys resolve BY ID, so
+    a colliding id can silently join the wrong table and return plausible rows."""
+    if not _has_relationships(spec):
+        return []
+    owners: dict[str, list[str]] = {}
+    for _, _, el in _elements(spec):
+        for c in el.get("columns") or []:
+            owners.setdefault(c.get("id"), []).append(el.get("id"))
+    issues = []
+    for _, _, el in _elements(spec):
+        for rel in el.get("relationships") or []:
+            for k in rel.get("keys") or []:
+                for role in ("sourceColumnId", "targetColumnId"):
+                    cid = k.get(role)
+                    who = owners.get(cid, [])
+                    if len(who) > 1:
+                        issues.append(
+                            f"relationship {rel.get('id')!r} {role}={cid!r} exists on "
+                            f"MORE THAN ONE element ({', '.join(who)}). Relationship "
+                            "keys resolve by id, so this can join the wrong table and "
+                            "still return rows. Prefix column ids per element.")
+    return issues
+
+
+def issues_orphan_element(spec: dict) -> list[str]:
+    """Only meaningful once a spec is a star — skipped entirely otherwise."""
+    if not _has_relationships(spec):
+        return []
+    issues = []
+    for pi, page in enumerate(spec.get("pages", []) or []):
+        els = page.get("elements", []) or []
+        if len(els) < 2:
+            continue
+        connected = set()
+        for el in els:
+            for rel in el.get("relationships") or []:
+                connected.add(el.get("id"))
+                connected.add(rel.get("targetElementId"))
+        for ei, el in enumerate(els):
+            if el.get("id") not in connected:
+                issues.append(
+                    f"pages[{pi}].elements[{ei}] ({el.get('id')}): not connected by any "
+                    "relationship — either a forgotten relationship or dead weight.")
+    return issues
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.stderr.write("usage: validate-datamodel-spec.py <datamodel-spec.json>\n")
@@ -234,6 +366,12 @@ def main() -> None:
         ("no-timeline-direction",         lambda: issues_timeline_direction(spec)),
         ("timeline-refs-resolve",         lambda: issues_timeline_refs(spec)),
         ("no-self-reference",             lambda: issues_self_reference(spec)),
+        ("no-duplicate-element-names",    lambda: issues_duplicate_element_names(spec)),
+        ("relationship-targets-resolve",  lambda: issues_relationship_targets(spec)),
+        ("relationship-keys-resolve",     lambda: issues_relationship_keys(spec)),
+        ("relationship-key-ids-unambiguous",
+                                          lambda: issues_relationship_key_ids_unambiguous(spec)),
+        ("no-orphan-element",             lambda: issues_orphan_element(spec)),
     ]:
         for msg in fn():
             all_issues.append((tag, msg))

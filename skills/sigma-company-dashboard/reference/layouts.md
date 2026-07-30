@@ -29,7 +29,13 @@ Supporting signals: **no date column** rules out `exec-brief` and `analyst-detai
 
 ## The question to ask
 
-Once, after recon, before page 1. State the recommendation **with its evidence**;
+**Skip it if you have a brief.** When the user brought screenshots or a call
+transcript, `sigma-discovery-brief` already picked a layout from that evidence —
+its `reference/evidence-mapping.md` is this decision table restated as
+evidence → layout — and the human confirmed it at the readout. Build
+`decisions.layout` and don't re-litigate.
+
+Otherwise: once, after recon, before page 1. State the recommendation **with its evidence**;
 `"recommended"` is a valid one-word answer so the fast path survives.
 
 > **Which layout?** Your data has 6 measures, a monthly date column spanning 24
