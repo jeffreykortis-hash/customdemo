@@ -367,9 +367,23 @@ or two side-by-side tables), so this risk never comes up on this page. See
 - You can't render Sigma from here — after each POST, hand the user the URL and
   iterate from their screenshot.
 
-## Move 5 — make the asset CALLABLE (in scope, not an afterthought)
-A demoable asset should both *do* something and *be addressable*. Full detail in
-**`reference/api-actions.md`**; the build-scope summary:
+## Move 5 — make the asset CALLABLE (a DEFAULT, not an option)
+A demoable asset must both *do* something and *be addressable*. **Every workbook
+this skill builds ships a live public-API panel** — that is a non-negotiable
+default in the same class as comparative KPI cards and the AI insight, not a
+nice-to-have. `scripts/validate-spec.py` prints a `NOTE [live-api]` on any spec
+that lacks one (advisory, so cohort/input-table builds aren't blocked). Full
+detail in **`reference/api-actions.md`**; the build-scope summary:
+
+- **The live API panel is emitted by default.** `examples/build_company_command_center.py`
+  carries a **"Live API" tab** wired to `plugins/public-api-live/`. Register that
+  plugin once per org and export `PUBLIC_API_PLUGIN_ID`; override the endpoint
+  with `PUBLIC_API_URL` / `PUBLIC_API_FIELDS`. The default endpoint takes **no
+  parameters**, so the panel works no matter what the client's data contains —
+  nothing to bind, nothing to configure, and no credential to provision.
+  ⚠ If `PUBLIC_API_PLUGIN_ID` is unset the element ships with an empty
+  `pluginId` and renders as a BLANK panel — worse than omitting it. The validator
+  catches exactly this case; don't publish through it.
 
 - **Actions out of the workbook.** Wire at least one button-driven action so the
   demo does more than render: `select-tab` to drive a guided walkthrough,

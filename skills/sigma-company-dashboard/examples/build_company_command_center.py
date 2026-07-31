@@ -75,6 +75,16 @@ if _AI:
 else:
     AICONN,AIMODEL=_AI_BY_TYPE.get(_RM.get("type") or "",("SNOWFLAKE.CORTEX.COMPLETE","CLAUDE-4-SONNET"))
 CLOCK=os.environ.get("PLUGIN_ID","REPLACE_WITH_YOUR_PLUGIN_ID")
+# STANDING DEFAULT: every generated workbook carries a LIVE PUBLIC API panel, so
+# the asset visibly calls something real rather than only rendering warehouse
+# data. Register plugins/public-api-live/ once per org and set this. The endpoint
+# below takes NO {a}/{b} params, so the panel works regardless of what the
+# client's data contains -- no coordinates, no bindings, nothing to configure.
+# Keyless + CORS-enabled, so there is no credential to provision or redact.
+LIVEAPI=os.environ.get("PUBLIC_API_PLUGIN_ID","")
+LIVEAPI_URL=os.environ.get("PUBLIC_API_URL",
+    "https://api.frankfurter.app/latest?from=USD&to=EUR,GBP,JPY")
+LIVEAPI_FIELDS=os.environ.get("PUBLIC_API_FIELDS","rates.EUR,rates.GBP,rates.JPY")
 H={"Authorization":"Bearer "+TOKEN,"Content-Type":"application/json"}
 def b64(s): return base64.b64encode(s.encode()).decode()
 CUR={"kind":"number","formatString":"$.3~s","currencySymbol":"$","decimalSymbol":".","digitGroupingSymbol":",","digitGroupingSize":[3]}
@@ -335,7 +345,13 @@ clock_el={"id":"clockviz","kind":"plugin","pluginId":CLOCK,"config":{"source":{"
 # "Command-center layout" section. NO wrapping GridContainer around the plugin
 # inside its Tab (verified to scramble render order) -- the plugin + its header
 # text are both bare LayoutElement children instead.
-tc_cc={"id":"tc-cc","kind":"tabbed-container","tabs":[{"name":"GOV Trend"},{"name":"Demand Clock"},{"name":"Detail Tables"}],"tabBar":{"alignment":"start"}}
+liveapi_hd={"id":"live-hd","kind":"text","body":("**Live public API** — fetched from the browser at render time, "
+ "no API connector or credentials required."),"verticalAlign":"middle","style":{"color":INK}}
+liveapi_el={"id":"liveapi","kind":"plugin","pluginId":LIVEAPI,
+ "config":{"endpoint":LIVEAPI_URL,"fields":LIVEAPI_FIELDS,"title":"Live response"}}
+# Bindings are BARE strings; this plugin needs no column bindings at all in
+# zero-param mode, which is exactly why it is safe as a universal default.
+tc_cc={"id":"tc-cc","kind":"tabbed-container","tabs":[{"name":"GOV Trend"},{"name":"Demand Clock"},{"name":"Detail Tables"},{"name":"Live API"}],"tabBar":{"alignment":"start"}}
 heat={"id":"heat","kind":"pivot-table","source":{"elementId":"tbl","kind":"table"},
  "columns":[{"id":"hm","formula":f"[{MF}/Category]","name":"Category"},{"id":"hp","formula":f"[{MF}/Region]","name":"Region"},{"id":"hv","formula":f"Sum([{MF}/GOV])","name":"GOV","format":CUR}],
  "rowsBy":[{"id":"hm"}],"columnsBy":[{"id":"hp"}],"values":["hv"],
@@ -375,7 +391,7 @@ def rail(n,with_agent,rows,agent_id):
 h1e,h1l=header("1","Marketplace Command Center","GOV, revenue, orders & take rate across categories")
 def page1(with_agent):
     re,rl=rail(1,with_agent,"20 / 74","ag-copilot")
-    elems=[tbl,demand]+h1e+kpis+[ai_box,ai_ic,ai_hd,ai_sum,filt_c,grain,colorby,ctrl_cat,tc_cc,sbar,clock_hd,clock_el,heat,book]+re
+    elems=[tbl,demand]+h1e+kpis+[ai_box,ai_ic,ai_hd,ai_sum,filt_c,grain,colorby,ctrl_cat,tc_cc,sbar,clock_hd,clock_el,heat,book,liveapi_hd,liveapi_el]+re
     lay=f"""<Page type="grid" gridTemplateColumns="repeat(24, 1fr)" gridTemplateRows="auto" id="pg">
 {h1l}
 {chr(10).join(kpilay)}
@@ -394,6 +410,10 @@ def page1(with_agent):
     <Tab gridTemplateColumns="repeat(24, 1fr)" gridTemplateRows="auto">
       <LayoutElement elementId="heat" gridColumn="1 / 13" gridRow="1 / 22"/>
       <LayoutElement elementId="book" gridColumn="13 / 25" gridRow="1 / 22"/>
+    </Tab>
+    <Tab gridTemplateColumns="repeat(24, 1fr)" gridTemplateRows="auto">
+      <LayoutElement elementId="live-hd" gridColumn="1 / 25" gridRow="1 / 2"/>
+      <LayoutElement elementId="liveapi" gridColumn="1 / 25" gridRow="2 / 22"/>
     </Tab>
   </TabbedContainer>
 {rl}

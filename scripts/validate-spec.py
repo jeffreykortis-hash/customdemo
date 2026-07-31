@@ -25,7 +25,6 @@ CHECKS = [
     "no-per-page-layout",
     "elements-placed-in-layout",
     "containers-have-children",
-    "no-column-format",
     "control-id-unique",
 ]
 
@@ -59,15 +58,21 @@ def _parse_layout(layout: str) -> ET.Element | None:
 def issues_elements_placed(spec: dict, root: ET.Element | None) -> list[str]:
     if root is None:
         return ["no top-level `layout` field — workbook will have an auto-generated layout"]
+    # TabbedContainer places elements too — omitting it flagged every tabbed
+    # command-center layout as broken.
     placed_ids = {
         el.get("elementId")
         for el in root.iter()
-        if el.tag in ("LayoutElement", "GridContainer")
+        if el.tag in ("LayoutElement", "GridContainer", "TabbedContainer", "Tab")
     }
     issues = []
     for pi, p in enumerate(spec.get("pages", [])):
         for el in p.get("elements", []):
             eid = el.get("id")
+            # `visibleAsSource` tables are hidden feeds for other elements and are
+            # SUPPOSED to be unplaced; flagging them is a false positive.
+            if el.get("visibleAsSource"):
+                continue
             if eid and eid not in placed_ids:
                 issues.append(
                     f"pages[{pi}].elements ({eid}, kind={el.get('kind')}): "
@@ -100,18 +105,12 @@ def issues_containers_have_children(spec: dict, root: ET.Element | None) -> list
     return issues
 
 
-def issues_no_format(spec: dict) -> list[str]:
-    issues = []
-    for pi, p in enumerate(spec.get("pages", [])):
-        for ei, el in enumerate(p.get("elements", [])):
-            for ci, col in enumerate(el.get("columns", []) or []):
-                if "format" in col:
-                    issues.append(
-                        f"pages[{pi}].elements[{ei}].columns[{ci}] ({col.get('id')}): "
-                        "has `format` field — Sigma rejects with 'Missing \"kind\" field'. "
-                        "Configure currency/percent in the UI after CREATE."
-                    )
-    return issues
+# REMOVED: `no-column-format`. It asserted that a column `format` field is
+# rejected with 'Missing "kind" field'. That is STALE — this repo's own
+# api-cheatsheet.md says "Column format (POSTS FINE — the 'format is rejected'
+# doc is stale)", and a two-page workbook carrying 43 formatted columns POSTed
+# 200 on 2026-07-30. The check was emitting dozens of false errors per real
+# spec and hard-failing publish-workbook.sh on perfectly valid dashboards.
 
 
 def issues_control_id_unique(spec: dict) -> list[str]:
@@ -134,6 +133,34 @@ def issues_control_id_unique(spec: dict) -> list[str]:
     return issues
 
 
+def notes_live_api(spec: dict) -> list[str]:
+    """ADVISORY, not a hard failure.
+
+    Every generated company dashboard should carry a live public-API panel so
+    the asset visibly CALLS something rather than only rendering warehouse data
+    (see sigma-company-dashboard/reference/api-actions.md). This is a note
+    rather than an error on purpose: the same validator runs for cohort apps,
+    input-table apps and scratch probes, and hard-failing those would be wrong.
+    A build that deliberately ships without one can simply ignore it.
+    """
+    has_plugin = any(el.get("kind") == "plugin"
+                     for p in spec.get("pages", []) for el in p.get("elements", []))
+    if not has_plugin:
+        return ["no `plugin` element found — a demoable asset should include a "
+                "live public-API panel (plugins/public-api-live/, wired via "
+                "PUBLIC_API_PLUGIN_ID). See reference/api-actions.md."]
+
+    # A plugin element with an empty pluginId renders as a blank panel, which is
+    # worse than omitting it — catch the unset-env-var case explicitly.
+    blank = [el.get("id") for p in spec.get("pages", []) for el in p.get("elements", [])
+             if el.get("kind") == "plugin" and not (el.get("pluginId") or "").strip()]
+    if blank:
+        return [f"plugin element(s) {blank} have an EMPTY pluginId — they will "
+                "render as a blank panel. Register the plugin and set its id "
+                "(e.g. PUBLIC_API_PLUGIN_ID) before publishing."]
+    return []
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         sys.stderr.write("usage: validate-spec.py <spec.json>\n")
@@ -148,18 +175,23 @@ def main() -> None:
         ("no-per-page-layout",          lambda: issues_per_page_layout(spec)),
         ("elements-placed-in-layout",   lambda: issues_elements_placed(spec, root)),
         ("containers-have-children",    lambda: issues_containers_have_children(spec, root)),
-        ("no-column-format",            lambda: issues_no_format(spec)),
         ("control-id-unique",           lambda: issues_control_id_unique(spec)),
     ]:
         for msg in fn():
             all_issues.append((tag, msg))
 
+    notes = notes_live_api(spec)
+
     if not all_issues:
         print(f"validate-spec: {sys.argv[1]} — all {len(CHECKS)} checks passed")
+        for n in notes:
+            print(f"validate-spec: NOTE [live-api] {n}")
         sys.exit(0)
 
     for tag, msg in all_issues:
         sys.stderr.write(f"[{tag}] {msg}\n")
+    for n in notes:
+        sys.stderr.write(f"NOTE [live-api] {n}\n")
     sys.stderr.write(f"\nvalidate-spec: {len(all_issues)} issue(s) found in {sys.argv[1]}\n")
     sys.exit(1)
 

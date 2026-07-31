@@ -69,7 +69,9 @@
     {name:"endpoint",type:"text",defaultValue:DEF_URL,
      label:"Endpoint URL ({a}/{b} substituted, must allow CORS)"},
     {name:"fields",type:"text",defaultValue:DEF_FIELDS,
-     label:"Response fields to show (dot paths, comma-separated)"}
+     label:"Response fields to show (dot paths, comma-separated)"},
+    {name:"title",type:"text",defaultValue:"Live response",
+     label:"Card title (used when the endpoint needs no {a}/{b} params)"}
   ];
   if(client) client.config.configureEditorPanel(defs);
 
@@ -152,6 +154,14 @@
     var c=st.cfg||{}, d=st.data;
     var tmpl=c.endpoint||DEF_URL;
     var rows=[];
+    // ZERO-BINDING MODE. An endpoint with no {a}/{b} placeholders needs no
+    // columns at all, so the plugin can be dropped into ANY workbook — including
+    // one whose data has no coordinates — and still show a real live call. This
+    // is what makes a live-API panel a safe default in every generated build.
+    if(!/\{a\}|\{b\}/.test(tmpl)){
+      st.rows=[{label:(c.title||"Live response"),url:tmpl}];
+      render(); st.rows.forEach(fetchFor); return;
+    }
     if(d && c.label && d[c.label]){
       var lab=d[c.label]||[], a=(c.paramA&&d[c.paramA])||[], b=(c.paramB&&d[c.paramB])||[];
       var seen={};
