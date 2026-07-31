@@ -351,3 +351,29 @@ plugin / detail-tables tabs) or a cohort-builder's Builder/Visualize split — s
   so a bare `json.load(urlopen(...))` on the response raises `JSONDecodeError` on a
   perfectly successful call. `sigma_curl` in `scripts/api/_env.sh` sets it; hand-rolled
   `urllib` clients in generators must set it too.
+
+## Action effects + calling into a built workbook
+Full treatment in `reference/api-actions.md`. The two rules that bite hardest:
+- **A wrong action effect NAME and a known effect with a MISSING FIELD are the
+  same masked `Invalid kind: "button"`.** So never guess an effect shape — harvest
+  it with `scripts/api/extract-action-shapes.sh`, which clones real shapes out of
+  workbooks that already use them. Verified effects beyond the ones above:
+  `navigate` (`{"effect":"navigate","target":{"type":"page","page":"<pageId>"}}` —
+  a nested `target`, NOT a flat `page`), `select-tab`
+  (`{"effect":"select-tab","tabbedContainer":"<elId>","selectedTab":{"type":"tab","index":0}}`),
+  `open-url` (`{"effect":"open-url","openTarget":"_blank","url":"…"}`) and
+  `open-document`. **`call-api` (Sigma's Call API action) is a real feature whose
+  spec shape is UNVERIFIED** — connectors list fine via `/v2/api-connectors`, but
+  no workbook exists to clone from; don't ship a guessed shape.
+- **A built workbook is fully queryable over REST:** `/v2/workbooks/{id}/pages`,
+  `/pages/{pageId}/elements`, `/queries` (returns the generated warehouse SQL per
+  element), and `POST /export` → `/v2/query/{queryId}/download`. Works on ANY
+  element including KPI tiles — `visibleAsSource` is not required. Wrapped by
+  `scripts/api/workbook-handles.sh` (manifest incl. column ids, `--verify` proves
+  it answers) and `scripts/api/query-element.sh`.
+- **⚠ The MCP server may be bound to a DIFFERENT ORG than your REST credentials.**
+  Verified: MCP `describe` returned "No matching record" for a workbook created
+  seconds earlier, and REST returned "resource does not exist" for a workbook MCP
+  could see. Tenancy mismatch, not indexing lag — check `GET /v2/whoami`
+  .organizationId against the org slug in MCP's result URLs. This is also the real
+  cause of MCP-vs-REST connection-id divergence.
