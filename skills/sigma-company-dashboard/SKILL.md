@@ -6,7 +6,7 @@ description: >-
   API (POST /v2/workbooks/spec). ONE skill does the whole thing: reshape sample data
   with custom SQL into the company's domain, fetch their REAL logo, a brand-gradient
   header, COMPARATIVE gradient KPI cards, a LIVE CallText AI insight, charts + filters,
-  a bespoke domain-specific plugin (hosted on localhost + registered), and a second
+  a bespoke domain-specific plugin (hosted on Netlify + registered), and a second
   interactive page — a scenario modeler OR a cohort/segmentation builder, whichever
   fits the prospect (this skill asks). USE THIS SKILL — not the building-block skills
   (branded-dashboard-format, sigma-workbook-styling, sigma-workbook-conventions,
@@ -105,17 +105,24 @@ eligible ones. The generator hard-aborts rather than shipping a dead page 2.
    a **CallText AI summary**, charts, laid out cleanly. POST via the spec API.
 3. **Domain plugin** — a bespoke, *operational* visual a person at that company
    would want (NOT a KPI reskin). Build it single-file (`@sigmacomputing/plugin`
-   SDK — see `plugins/cava-daypart/`), then **host + register it in YOUR org**
-   (a plugin is never auto-built by a workbook; it must exist in the org first):
-   - **Fastest (no hosting — makes "name a company → it builds" work instantly):** a
+   SDK — see `plugins/cava-daypart/`), then **always publish it to Netlify and
+   register that URL in YOUR org** (a plugin is never auto-built by a workbook;
+   it must exist in the org first). Netlify is the standard — never register a
+   `localhost` URL; a local server dies with your session and only your machine
+   can reach it, so no one else can open the workbook:
+   - **Fastest (no build — makes "name a company → it builds" work instantly):** a
      ready-hosted example plugin is live at `https://scintillating-madeleine-4aceba.netlify.app`
-     (source `examples/plugin-heatmap.html`). Just register THAT url and embed it — no local
-     server, works from any org. Build + host your own only when you want a bespoke one.
-   - **Host your own**: simplest is local — `python3 -m http.server 8080` inside `plugins/`,
-     giving `http://localhost:8080/<folder>/` (Sigma allows the http-localhost iframe
-     on your own machine). Or deploy to any static host (Netlify).
+     (source `examples/plugin-heatmap.html`). Just register THAT url and embed it — works
+     from any org. Build + deploy your own only when you want a bespoke one.
+   - **Host your own** (authed Netlify CLI): `netlify api createSite --data
+     '{"name":"<unique>","account_slug":"<slug>"}'` → `netlify deploy --prod --dir
+     <folder> --site <id>` (ALWAYS pass an explicit `--site`; empty deploys to the
+     wrong linked site). Iterate locally first with `python3 -m http.server 8080`
+     inside `plugins/` if you want fast edit-refresh cycles, then deploy the final
+     version to Netlify before registering — local hosting is for iteration only,
+     never the URL you register.
    - **Register** (one-time, per org): `python3 scripts/register_plugin.py <BASE_URL>
-     <TOKEN> "<name>" "<hosted-url>"` → prints a `pluginId`. (403 → your role can't
+     <TOKEN> "<name>" "<netlify-url>"` → prints a `pluginId`. (403 → your role can't
      register plugins; an org admin must.) `export DAYPART_PLUGIN_ID=<pluginId>`.
 4. **Wire it up** — embed `{kind:"plugin", pluginId, config:{source:{kind:"element",
    elementId}, <var>:"<columnId>"}}` with **your** `pluginId` (the example reads it
@@ -320,16 +327,16 @@ heatmap for a chipmaker, pace-to-target pour for a brewer, a campaign flight/Gan
 for an ad agency, activity rings) — never a KPI reskin. This full live-embed is the
 proven move: build → host → API-register → wire bound to its own data element.
 
-**Local dev instead of hosting.** For fast iteration (or when you don't want to
-deploy), serve the plugin from localhost and register THAT as the url:
-`cd <plugin-dir> && python3 -m http.server <port>` → `POST /v2/plugins {url:"http://localhost:<port>/"}`
-→ point the workbook element at that pluginId. Edit the file, refresh the workbook,
-changes show instantly — no redeploy. Caveats: the `url` is set-once (create a new
-registration to change it, PATCH won't); it only renders in a browser that can reach
-that localhost while the server runs (not shareable — for dev/personal demos, not
-teammates); Sigma is HTTPS loading an HTTP-localhost iframe, which browsers permit as
-a secure-context exception (blank panel ⇒ check that first). Keep verified plugin
-examples in `plugins/` (flight-timeline Gantt, territory choropleth, claims funnel).
+**Always register the Netlify URL, not localhost.** Registering a `pluginId` is a
+one-time, set-once operation (`url` can't be PATCHed — a new URL means a new
+registration), so register the URL that will still work after your session ends
+and from a teammate's or prospect's browser: the deployed Netlify URL. `localhost`
+only renders in a browser on your own machine while your server keeps running —
+not shareable, and it silently breaks the workbook the moment you close the
+terminal. Local `python3 -m http.server` is fine for edit-refresh iteration while
+building the visual, but treat the Netlify deploy as the last step before
+registering, every time. Keep verified plugin examples in `plugins/`
+(flight-timeline Gantt, territory choropleth, claims funnel).
 
 ## Layout `command-center` — left column is a TABBED CONTAINER
 

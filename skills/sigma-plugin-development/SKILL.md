@@ -850,19 +850,33 @@ export default App;
 
 ### Registering a Plugin in Sigma
 
-1. Build your plugin and host it at a publicly accessible URL (or localhost for development)
+Always register a publicly accessible URL — never a `localhost` URL. A plugin
+registration's `url` is set-once (no PATCH; a new URL means a new registration),
+and a `localhost` URL only resolves in a browser on the machine running the dev
+server, so the plugin breaks for anyone else — including you, after you close the
+terminal.
+
+1. Build your plugin and deploy it to Netlify (see Production Hosting below)
 2. In Sigma, go to **Administration > Plugins**
-3. Click **Add Plugin** and enter the URL
+3. Click **Add Plugin** and enter the deployed URL
 4. The plugin becomes available to add to any workbook
 5. In a workbook, add the plugin element and configure it via the editor panel
 
-### Local Development
-
-Run your plugin locally and register `http://localhost:3000` (or your dev server port) as the plugin URL in Sigma. Changes hot-reload in the workbook. The default Vite dev server runs on `http://localhost:5173`.
-
 ### Production Hosting
 
-Any static hosting works: Vercel, Netlify, S3 + CloudFront, GitHub Pages, etc. The plugin just needs to be a publicly accessible URL serving your HTML/JS/CSS.
+Always publish to Netlify so the plugin is reachable by anyone who opens the
+workbook — teammates, prospects, anyone without access to your machine. Authed CLI:
+`netlify api createSite --data '{"name":"<unique>","account_slug":"<slug>"}'` →
+`netlify deploy --prod --dir <folder> --site <id>` (always pass an explicit
+`--site`; an empty deploy target can push to the wrong linked site). Register the
+printed `https://<site>.netlify.app` URL, not a local one.
+
+### Local Development (iteration only, never the registered URL)
+
+Run your plugin locally (`http://localhost:3000`, or the default Vite dev server
+port `http://localhost:5173`) for fast edit-refresh iteration while building the
+visual. Once it looks right, deploy to Netlify and register that URL instead —
+local hosting is for iterating on the plugin, not for sharing it.
 
 ### Build Considerations
 
