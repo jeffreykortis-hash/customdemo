@@ -381,7 +381,13 @@ A demoable asset should both *do* something and *be addressable*. Full detail in
   feature and the org has connectors (`scripts/api/list-api-connectors.sh`), but
   its **spec shape is not yet verified from code** — no workbook to clone from,
   and blind probing cannot resolve it. Don't ship a guessed one; see the doc for
-  the one-time UI step that captures it permanently.
+  the one-time UI step that captures it permanently. The **connector** itself IS
+  creatable from code: `scripts/api/create-public-api-connector.sh` provisions a
+  public keyless API (Open-Meteo / FX / holidays / countries) in one command.
+- **A live API call that works in ANY org today:** embed `plugins/public-api-live/`,
+  which `fetch()`es a public keyless endpoint straight from the browser — no
+  connector, no credentials, no special permission. Use it whenever the demo needs
+  to visibly call something real.
 - **Calls into the workbook.** Finish every build by emitting the handles:
   `scripts/api/workbook-handles.sh <workbookId> --verify` → url, pages, every
   element with its column ids, and a live row count proving it answers queries.

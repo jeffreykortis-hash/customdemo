@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Public API Live — Sigma plugin</title>
+<!--
+  Calls a PUBLIC, keyless HTTP API live from the workbook and renders the result
+  next to your own rows. Works in ANY client org with zero setup: no API
+  connector, no credentials, no "Create/Trigger API actions" permission — the
+  fetch happens in the browser, so the only requirement is that the endpoint
+  sends `access-control-allow-origin: *` (all the defaults below do).
+
+  This is the dependable counterpart to Sigma's native Call API action. Use the
+  native action when the call must be governed/audited or must write somewhere;
+  use this when you want a live API in a demo that any client can run today.
+
+  The SDK UMD build has a HARD React peer dependency — without React on the page
+  its factory throws and window.SigmaPlugin is left EMPTY. Both URLs are PINNED.
+-->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/@sigmacomputing/plugin@1.2.0"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,Arial,sans-serif;
+       background:transparent;color:#2B2B2B;overflow:hidden}
+  #wrap{height:100%;display:flex;flex-direction:column;padding:10px 14px;gap:8px}
+  #top{display:flex;justify-content:space-between;align-items:baseline;flex:0 0 auto;gap:10px}
+  #ttl{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#007BC2}
+  #meta{font-size:11px;color:#6B7280;white-space:nowrap}
+  #grid{flex:1;display:grid;gap:8px;overflow:auto;align-content:start}
+  .card{border:1px solid #E6EBF0;border-radius:10px;padding:9px 11px;background:#fff;
+        display:flex;flex-direction:column;gap:3px;min-width:0}
+  .lab{font-size:11px;font-weight:700;color:#2B2B2B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row{display:flex;justify-content:space-between;gap:8px;font-size:11px}
+  .k{color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .v{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .err{color:#C8102E}
+  .pend{color:#9AA3AE;font-style:italic}
+  #note{flex:0 0 auto;font-size:10px;color:#9AA3AE}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="top"><div id="ttl">Live public API</div><div id="meta">—</div></div>
+  <div id="grid"></div>
+  <div id="note"></div>
+</div>
+<script>
+(function(){
+  var client=(window.SigmaPlugin&&window.SigmaPlugin.client)||
+             (window.sigmaComputing&&window.sigmaComputing.plugin&&window.sigmaComputing.plugin.client)||null;
+
+  // Spec-configured plugins receive {kind:"element",elementId}; UI-configured
+  // ones receive a bare string. Passing the object straight through silently
+  // yields no data, so the plugin sits on its fallback forever.
+  function srcId(s){ return (s && typeof s==="object") ? (s.elementId||s.id) : s; }
+
+  var DEF_URL="https://api.open-meteo.com/v1/forecast?latitude={a}&longitude={b}&current=temperature_2m,wind_speed_10m";
+  var DEF_FIELDS="current.temperature_2m,current.wind_speed_10m";
+  var MAXROWS=12;   // a demo panel, not a bulk loader — and it is one fetch per row
+
+  var defs=[
+    {name:"source",type:"element"},
+    {name:"label",type:"column",source:"source",allowMultiple:false,label:"Row label"},
+    {name:"paramA",type:"column",source:"source",allowMultiple:false,label:"URL param {a}"},
+    {name:"paramB",type:"column",source:"source",allowMultiple:false,label:"URL param {b}"},
+    {name:"endpoint",type:"text",defaultValue:DEF_URL,
+     label:"Endpoint URL ({a}/{b} substituted, must allow CORS)"},
+    {name:"fields",type:"text",defaultValue:DEF_FIELDS,
+     label:"Response fields to show (dot paths, comma-separated)"}
+  ];
+  if(client) client.config.configureEditorPanel(defs);
+
+  function dig(o,path){
+    return path.split(".").reduce(function(acc,k){
+      if(acc==null) return null;
+      var m=k.match(/^(.*)\[(\d+)\]$/);            // support a[0].b
+      if(m) return (acc[m[1]]||[])[+m[2]];
+      return acc[k];
+    },o);
+  }
+  function fmt(v){
+    if(v==null) return "—";
+    if(typeof v==="number") return (Math.round(v*100)/100).toLocaleString();
+    if(typeof v==="object") return JSON.stringify(v).slice(0,40);
+    return String(v).slice(0,40);
+  }
+
+  var st={cfg:{},data:null,unsub:null,rows:null,cache:{},inflight:0};
+
+  function render(){
+    var grid=document.getElementById("grid");
+    var host=grid.parentElement;
+    var w=host.clientWidth||520;
+    // Measure at RENDER time — Sigma sizes the panel after first paint, so a
+    // load-time-only measurement wraps/clips the card grid.
+    var cols=Math.max(1,Math.min(4,Math.floor(w/210)));
+    grid.style.gridTemplateColumns="repeat("+cols+",minmax(0,1fr))";
+    grid.innerHTML="";
+    var rows=st.rows||[];
+    var paths=(st.cfg.fields||DEF_FIELDS).split(",").map(function(s){return s.trim();}).filter(Boolean);
+    var done=0,errs=0;
+    rows.forEach(function(r){
+      var c=document.createElement("div"); c.className="card";
+      var l=document.createElement("div"); l.className="lab"; l.textContent=r.label; c.appendChild(l);
+      var res=st.cache[r.url];
+      if(res===undefined){
+        var p=document.createElement("div"); p.className="row pend"; p.textContent="loading…"; c.appendChild(p);
+      } else if(res && res.__error){
+        errs++;
+        var e=document.createElement("div"); e.className="row err"; e.textContent=res.__error; c.appendChild(e);
+      } else {
+        done++;
+        paths.forEach(function(p){
+          var row=document.createElement("div"); row.className="row";
+          var k=document.createElement("span"); k.className="k"; k.textContent=p.split(".").pop();
+          var v=document.createElement("span"); v.className="v"; v.textContent=fmt(dig(res,p));
+          row.appendChild(k); row.appendChild(v); c.appendChild(row);
+        });
+      }
+      grid.appendChild(c);
+    });
+    document.getElementById("meta").textContent =
+      rows.length ? (done+"/"+rows.length+" loaded"+(errs?" · "+errs+" failed":"")) : "no rows";
+    var ep=(st.cfg.endpoint||DEF_URL).split("?")[0];
+    document.getElementById("note").textContent =
+      "live GET " + ep + " — public, keyless, called from the browser (no API connector required)";
+  }
+
+  function fetchFor(r){
+    if(st.cache[r.url]!==undefined) return;
+    st.cache[r.url]=undefined;
+    fetch(r.url,{mode:"cors"})
+      .then(function(resp){
+        if(!resp.ok) throw new Error("HTTP "+resp.status);
+        return resp.json();
+      })
+      .then(function(j){ st.cache[r.url]=j; render(); })
+      .catch(function(e){
+        // A CORS refusal surfaces here as an opaque TypeError — name it, since
+        // "failed to fetch" on a public URL is almost always CORS, not downtime.
+        var m=String(e && e.message||e);
+        st.cache[r.url]={__error: /Failed to fetch|NetworkError/i.test(m)
+          ? "blocked (CORS?)" : m};
+        render();
+      });
+  }
+
+  function recompute(){
+    var c=st.cfg||{}, d=st.data;
+    var tmpl=c.endpoint||DEF_URL;
+    var rows=[];
+    if(d && c.label && d[c.label]){
+      var lab=d[c.label]||[], a=(c.paramA&&d[c.paramA])||[], b=(c.paramB&&d[c.paramB])||[];
+      var seen={};
+      for(var i=0;i<lab.length && rows.length<MAXROWS;i++){
+        var url=tmpl.replace(/\{a\}/g,encodeURIComponent(a[i]==null?"":a[i]))
+                    .replace(/\{b\}/g,encodeURIComponent(b[i]==null?"":b[i]));
+        if(seen[url]) continue;            // one fetch per distinct URL, not per row
+        seen[url]=1;
+        rows.push({label:String(lab[i]),url:url});
+      }
+    }
+    if(!rows.length) rows=synth(tmpl);
+    st.rows=rows; render(); rows.forEach(fetchFor);
+  }
+
+  // Standalone preview: real coordinates so the panel is representative.
+  function synth(tmpl){
+    return [["Main Campus",41.5034,-81.6207],["Fairview",41.4419,-81.8573],
+            ["Hillcrest",41.5581,-81.4718],["Akron General",41.0814,-81.5190]]
+      .map(function(p){
+        return {label:p[0],
+                url:tmpl.replace(/\{a\}/g,p[1]).replace(/\{b\}/g,p[2])};
+      });
+  }
+
+  function applyCfg(cfg){
+    st.cfg=cfg||{};
+    if(st.unsub){ try{st.unsub();}catch(e){} st.unsub=null; }
+    if(cfg&&cfg.source){
+      st.unsub=client.elements.subscribeToElementData(srcId(cfg.source),function(dd){
+        st.data=dd; recompute();
+      });
+    }
+    recompute();
+  }
+
+  if(client){
+    client.config.subscribe(applyCfg);
+    try{ var i=client.config.get(); if(i) applyCfg(i); }catch(e){}
+  } else { recompute(); }
+
+  new ResizeObserver(function(){ if(st.rows) render(); })
+    .observe(document.getElementById("grid").parentElement);
+})();
+</script>
+</body>
+</html>

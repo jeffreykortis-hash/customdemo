@@ -78,6 +78,22 @@ exposes three action variables downstream in the same sequence — **response da
 **response status**, **response headers** — so the demoable pattern is
 *button → Call API → `set-control-value` into a text-area control to show the response.*
 
+### The connector itself IS creatable from code (verified 2026-07-30)
+
+`POST /v2/api-connectors` creates a connector and returns its `apiConnectorId` —
+no admin UI step. Verified for both a query-param connector and a path-param one:
+
+```
+scripts/api/create-public-api-connector.sh            # catalog of public APIs
+scripts/api/create-public-api-connector.sh weather     # -> apiConnectorId
+scripts/api/create-public-api-connector.sh --all
+```
+
+It wires up **public, keyless** endpoints so any client org can have a working
+API demo with nothing to provision and no secret to redact on a recording:
+Open-Meteo (weather), Frankfurter (FX rates), Nager.Date (public holidays),
+REST Countries. All are HTTPS and send `access-control-allow-origin: *`.
+
 **What is NOT known:** the JSON that expresses this in a workbook spec. Reasons:
 
 - **No workbook in this org uses it.** A scan of all 92 workbooks found eight
@@ -98,6 +114,29 @@ and you will not be able to tell whether the name or a field was wrong.
 
 Until then, a build that promises "clicking this calls your API" is promising
 something not yet reproducible from code — say so rather than shipping a dead button.
+
+## The zero-setup alternative that DOES work from code: `plugins/public-api-live/`
+
+A Sigma plugin is browser JavaScript, so it can `fetch()` a public API directly.
+That sidesteps the whole unverified-action problem and needs **no connector, no
+credentials, and no Create/Trigger API actions permission** — which makes it the
+one live-API path that works in *any* client org today.
+
+`plugins/public-api-live/index.html` is a generic one: bind a label column plus up
+to two columns substituted into an endpoint template as `{a}`/`{b}`, and list the
+response fields to show as dot paths (`current.temperature_2m`). Defaults to
+Open-Meteo. Verified end-to-end against the live endpoint.
+
+- Requirement: the endpoint must send `access-control-allow-origin: *` (all four
+  in the catalog above do). A CORS refusal surfaces in JS as an opaque
+  `TypeError: Failed to fetch`, so the plugin labels that case "blocked (CORS?)"
+  rather than showing a bare network error.
+- It fetches **once per distinct URL**, capped at 12 rows — it's a demo panel, not
+  a bulk loader.
+
+**Which to use:** the native Call API action when the call must be governed,
+audited, authenticated, or must write somewhere. This plugin when you want a live
+public API in a demo that any client can run immediately.
 
 ---
 

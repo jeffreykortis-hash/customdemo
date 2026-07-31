@@ -5,7 +5,7 @@ workbooks and dashboards, data models, data apps, embed portals, and custom
 visualization plugins. Install it once and every skill below becomes available in
 any project.
 
-Twelve skills, a set of REST/MCP helper scripts, and ten worked plugin examples.
+Twelve skills, a set of REST/MCP helper scripts, and twelve worked plugin examples.
 Everything here is authored against the **verified** shape of the Sigma API — the
 reference docs record what was actually observed on a live org, including the
 places where the endpoint accepts something and then silently does nothing with it.
@@ -308,10 +308,10 @@ customdemo/
 │   ├── plugin.json          # manifest (skills auto-discovered from skills/)
 │   └── marketplace.json     # makes the repo self-installable via /plugin
 ├── skills/                  # 12 skills, one folder each with SKILL.md
-├── plugins/                 # 11 plugin examples; _scaffold/ is the clone target
+├── plugins/                 # 12 plugin examples; _scaffold/ is the clone target
 ├── artifacts/               # client screenshots + transcripts (gitignored)
 ├── scripts/
-│   ├── api/                 # 16 auth-bootstrapped REST + MCP wrappers
+│   ├── api/                 # 17 auth-bootstrapped REST + MCP wrappers
 │   ├── intake-artifacts.py  # triage screenshots + transcripts → brief skeleton
 │   ├── validate-brief.py    # provenance gate on brief.json (15 checks)
 │   ├── profile-table.py     # profile a client table → candidate roles
