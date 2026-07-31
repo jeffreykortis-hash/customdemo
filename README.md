@@ -195,7 +195,8 @@ flowchart TD
     POST -->|"HTTP 200 ≠ working"| AV{"auto-verify<br/><i>describe → any column<br/>of type `error`?</i>"}
     AV -->|broken| G
     AV -->|clean| Q["query the element<br/><i>real rows? sane numbers?</i>"]
-    Q --> EYE{{"👁 OPEN IT IN A BROWSER"}}
+    Q --> H["scripts/api/workbook-handles.sh --verify<br/><i>emit callable handles + prove it answers</i>"]
+    H --> EYE{{"👁 OPEN IT IN A BROWSER"}}
     EYE -->|"wrong / blank / fake"| G
     EYE -->|correct| DONE([done])
 
@@ -311,7 +312,7 @@ customdemo/
 ├── plugins/                 # 12 plugin examples; _scaffold/ is the clone target
 ├── artifacts/               # client screenshots + transcripts (gitignored)
 ├── scripts/
-│   ├── api/                 # 18 auth-bootstrapped REST + MCP wrappers
+│   ├── api/                 # 16 auth-bootstrapped REST + MCP wrappers
 │   ├── intake-artifacts.py  # triage screenshots + transcripts → brief skeleton
 │   ├── validate-brief.py    # provenance gate on brief.json (15 checks)
 │   ├── profile-table.py     # profile a client table → candidate roles
@@ -356,6 +357,8 @@ copy via `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
 - **Theme is code** — the whole palette and font live in top-level `themeOverrides`. (An older doc here claimed otherwise; it was wrong, and it stopped the agent from even trying.)
 - **Real logo** via `scripts/fetch_logo.py <domain>`; fall back to a typographic wordmark — never let an image model draw a logo.
 - **Input tables need a writeback-enabled connection.** Reads don't. Check with `scripts/api/list-connections.sh --writable`.
+- **Every workbook ships a LIVE PUBLIC-API panel** so the asset visibly *calls* something, not just renders warehouse rows. `plugins/public-api-live/` fetches a keyless endpoint straight from the browser — no API connector, no credentials, no permission — so it works in any client org. The default endpoint takes no parameters, so it needs no column bindings and works whatever the client's data looks like. Register it once, export `PUBLIC_API_PLUGIN_ID`; `validate-spec.py` prints `NOTE [live-api]` if a spec omits it or leaves the `pluginId` empty (which renders a blank panel).
+- **BYOD means ASK for the table** — connection + `CATALOG.SCHEMA.TABLE`. Don't sweep the workspace for a plausible-looking table and propose the best match; it wastes a turn and reads as ignoring the person who just told you they have data.
 
 ---
 
