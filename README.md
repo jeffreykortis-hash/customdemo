@@ -311,7 +311,7 @@ customdemo/
 ├── plugins/                 # 11 plugin examples; _scaffold/ is the clone target
 ├── artifacts/               # client screenshots + transcripts (gitignored)
 ├── scripts/
-│   ├── api/                 # 12 auth-bootstrapped REST + MCP wrappers
+│   ├── api/                 # 16 auth-bootstrapped REST + MCP wrappers
 │   ├── intake-artifacts.py  # triage screenshots + transcripts → brief skeleton
 │   ├── validate-brief.py    # provenance gate on brief.json (15 checks)
 │   ├── profile-table.py     # profile a client table → candidate roles

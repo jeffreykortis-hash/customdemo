@@ -367,8 +367,33 @@ or two side-by-side tables), so this risk never comes up on this page. See
 - You can't render Sigma from here — after each POST, hand the user the URL and
   iterate from their screenshot.
 
+## Move 5 — make the asset CALLABLE (in scope, not an afterthought)
+A demoable asset should both *do* something and *be addressable*. Full detail in
+**`reference/api-actions.md`**; the build-scope summary:
+
+- **Actions out of the workbook.** Wire at least one button-driven action so the
+  demo does more than render: `select-tab` to drive a guided walkthrough,
+  `navigate`, `set-control-value`, `insert-rows`. Clone every effect shape with
+  `scripts/api/extract-action-shapes.sh` — **never guess one**, because a wrong
+  effect name and a missing required field both fail as the identical masked
+  `Invalid kind: "button"`.
+  **Sigma's `Call API` action** (button → external HTTP endpoint) is a real
+  feature and the org has connectors (`scripts/api/list-api-connectors.sh`), but
+  its **spec shape is not yet verified from code** — no workbook to clone from,
+  and blind probing cannot resolve it. Don't ship a guessed one; see the doc for
+  the one-time UI step that captures it permanently.
+- **Calls into the workbook.** Finish every build by emitting the handles:
+  `scripts/api/workbook-handles.sh <workbookId> --verify` → url, pages, every
+  element with its column ids, and a live row count proving it answers queries.
+  Hand that manifest over with the URL.
+- **⚠ Verify over REST, not MCP.** The MCP server may be bound to a different org
+  than your REST credentials, in which case it cannot see what you just built and
+  `describe` returns "No matching record". That's tenancy, not lag.
+
 ## Files
 - `reference/api-cheatsheet.md` — verified element shapes + every gotcha. READ FIRST.
+- `reference/api-actions.md` — action effects (verified shapes), the Call API
+  status, and how to query INTO a built workbook.
 - `reference/layouts.md` — the six-layout catalog, the decision table, and the exact
   layout question to ask. Consult BEFORE drafting page 1.
 - `examples/build_company_command_center.py` — **THE canonical current-standard generator** (clone this).
